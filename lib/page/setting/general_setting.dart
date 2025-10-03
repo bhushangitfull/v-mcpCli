@@ -36,7 +36,7 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                       const SizedBox(height: 10),
                       _buildThemeCard(context),
                       _buildLocaleCard(context),
-                      _buildAvatarCard(context),
+                      // _buildAvatarCard(context),
                       if (!kIsBrowser) _buildProxyCard(context),
                       _buildSystemPromptCard(context),
                       if (!kIsBrowser) _buildMaintenanceCard(context),
@@ -170,52 +170,52 @@ class _GeneralSettingsState extends State<GeneralSettings> {
     );
   }
 
-  Widget _buildAvatarCard(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, child) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle(context, l10n.showAvatar, CupertinoIcons.person_crop_circle),
-            Card(
-              elevation: 0,
-              color: Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Theme.of(context).colorScheme.outline.withAlpha(50)),
-              ),
-              child: Column(
-                children: [
-                  SettingSwitch(
-                    title: l10n.showAssistantAvatar,
-                    subtitle: l10n.showAssistantAvatarDescription,
-                    value: settings.generalSetting.showAssistantAvatar,
-                    titleFontSize: 14,
-                    subtitleFontSize: 12,
-                    onChanged: (bool value) {
-                      settings.updateGeneralSettingsPartially(showAssistantAvatar: value);
-                    },
-                  ),
-                  Divider(height: 1, indent: 16, endIndent: 16, color: Theme.of(context).colorScheme.outline.withAlpha(50)),
-                  SettingSwitch(
-                    title: l10n.showUserAvatar,
-                    subtitle: l10n.showUserAvatarDescription,
-                    value: settings.generalSetting.showUserAvatar,
-                    titleFontSize: 14,
-                    subtitleFontSize: 12,
-                    onChanged: (bool value) {
-                      settings.updateGeneralSettingsPartially(showUserAvatar: value);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // Widget _buildAvatarCard(BuildContext context) {
+  //   final l10n = AppLocalizations.of(context)!;
+  //   return Consumer<SettingsProvider>(
+  //     builder: (context, settings, child) {
+  //       return Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           _buildSectionTitle(context, l10n.showAvatar, CupertinoIcons.person_crop_circle),
+  //           Card(
+  //             elevation: 0,
+  //             color: Theme.of(context).colorScheme.surface,
+  //             shape: RoundedRectangleBorder(
+  //               borderRadius: BorderRadius.circular(12),
+  //               side: BorderSide(color: Theme.of(context).colorScheme.outline.withAlpha(50)),
+  //             ),
+  //             child: Column(
+  //               children: [
+  //                 SettingSwitch(
+  //                   title: l10n.showAssistantAvatar,
+  //                   subtitle: l10n.showAssistantAvatarDescription,
+  //                   value: settings.generalSetting.showAssistantAvatar,
+  //                   titleFontSize: 14,
+  //                   subtitleFontSize: 12,
+  //                   onChanged: (bool value) {
+  //                     settings.updateGeneralSettingsPartially(showAssistantAvatar: value);
+  //                   },
+  //                 ),
+  //                 Divider(height: 1, indent: 16, endIndent: 16, color: Theme.of(context).colorScheme.outline.withAlpha(50)),
+  //                 SettingSwitch(
+  //                   title: l10n.showUserAvatar,
+  //                   subtitle: l10n.showUserAvatarDescription,
+  //                   value: settings.generalSetting.showUserAvatar,
+  //                   titleFontSize: 14,
+  //                   subtitleFontSize: 12,
+  //                   onChanged: (bool value) {
+  //                     settings.updateGeneralSettingsPartially(showUserAvatar: value);
+  //                   },
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
 
   Widget _buildProxyCard(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;

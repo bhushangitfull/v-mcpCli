@@ -206,10 +206,10 @@ class TopToolbar extends StatelessWidget {
             children: [
               if (hideSidebar && kIsDesktop) ...[
                 // Show app logo and name when sidebar is hidden
-                if (!kIsMacOS) ...[
+                
                   CText(text: 'MCP-C', size: 12, fontWeight: FontWeight.w700),
                   const Gap(size: 24),
-                ],
+              
 
                 InkIcon(icon: CupertinoIcons.sidebar_right, onTap: onToggleSidebar, tooltip: AppLocalizations.of(context)!.toggleSidebar),
                 const Gap(size: 8),

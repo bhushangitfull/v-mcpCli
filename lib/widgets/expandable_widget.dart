@@ -19,7 +19,7 @@ class ExpandableRow extends StatelessWidget {
   }
 }
 
-/// 可展开的组件
+
 class ExpandableWidget extends StatefulWidget {
   final Widget header;
   final Widget expandedContent;

@@ -8,7 +8,6 @@ import 'package:chatmcp/utils/color.dart';
 import 'package:chatmcp/generated/app_localizations.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:chatmcp/components/widgets/base.dart';
-import 'package:chatmcp/page/layout/widgets/app_info.dart';
 import 'package:chatmcp/config/pagination_config.dart';
 import 'dart:async';
 
@@ -64,15 +63,15 @@ class _SidebarPanelState extends State<SidebarPanel> {
         height: double.infinity,
         child: Column(
           children: [
-            // 顶部区域
+           
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Row(
                 children: [
                   if (kIsWindows || kIsLinux || kIsMobile || kIsBrowser) ...[
-                    Image.asset('assets/logo.png', width: 24, height: 24),
+                    //Image.asset('assets/logo.png', width: 24, height: 24),
                     const Gap(size: 8),
-                    CText(text: 'ChatMCP', size: 12, fontWeight: FontWeight.w700),
+                    CText(text: 'MCP-C', size: 12, fontWeight: FontWeight.w700),
                   ],
                   const Spacer(),
                   InkIcon(icon: CupertinoIcons.search, onTap: toggleSearchVisibility, tooltip: AppLocalizations.of(context)!.search),
@@ -84,7 +83,7 @@ class _SidebarPanelState extends State<SidebarPanel> {
               ),
             ),
 
-            // 搜索框
+           
             if (_isSearchVisible)
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
@@ -371,7 +370,7 @@ class ChatHistoryItem extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final backgroundColor = AppColors.getThemeColor(context, lightColor: Colors.white, darkColor: Colors.grey[800]);
 
-    // 创建弹出菜单的内容
+   
     Widget popupContent = Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
@@ -379,7 +378,7 @@ class ChatHistoryItem extends StatelessWidget {
         children: [
           InkWell(
             onTap: () {
-              Navigator.pop(context); // 关闭弹窗
+              Navigator.pop(context); 
               _showDeleteConfirmDialog(context);
             },
             child: Container(
@@ -397,7 +396,7 @@ class ChatHistoryItem extends StatelessWidget {
       ),
     );
 
-    // 创建聊天项
+   
     Widget chatItem = ListTile(
       dense: true,
       visualDensity: VisualDensity(vertical: -4),
@@ -444,7 +443,7 @@ class ChatHistoryItem extends StatelessWidget {
     );
   }
 
-  // 桌面端构建方法：右键触发
+
   Widget _buildDesktopChatItem(BuildContext context, Widget chatItem, Widget popupContent, Color? backgroundColor) {
     return GestureDetector(
       onSecondaryTapDown: (TapDownDetails details) {
@@ -454,7 +453,7 @@ class ChatHistoryItem extends StatelessWidget {
     );
   }
 
-  // 移动端构建方法：长按触发
+ 
   Widget _buildMobileChatItem(BuildContext context, Widget chatItem, Widget popupContent, Color? backgroundColor) {
     return GestureDetector(
       onLongPressStart: (LongPressStartDetails details) {
@@ -464,21 +463,20 @@ class ChatHistoryItem extends StatelessWidget {
     );
   }
 
-  // 显示自定义弹出窗口
   void _showCustomPopup(BuildContext context, Widget content, Color? backgroundColor, Offset position) {
-    // 估计弹出菜单的宽度
+  
     const double estimatedPopupWidth = 150.0;
 
-    // 计算屏幕宽度
+  
     final double screenWidth = MediaQuery.of(context).size.width;
 
-    // 计算合适的left位置，使菜单靠右显示
+   
     double left = position.dx;
 
     // 确保菜单不会超出屏幕左边界
     left = left < 10 ? 10 : left;
 
-    // 确保菜单不会超出屏幕右边界
+    
     if (left + estimatedPopupWidth > screenWidth - 10) {
       left = screenWidth - estimatedPopupWidth - 10;
     }
@@ -539,7 +537,6 @@ class SidebarToolbar extends StatelessWidget {
           _buildSelectModeButton(context),
           if (chatProvider.isSelectMode) ...[const Gap(size: 4), _buildSelectAllButton(context), const Gap(size: 4), _buildDeleteButton(context)],
           const Spacer(),
-          const AppInfo(),
           const Gap(size: 4),
         ],
       ),
@@ -547,7 +544,7 @@ class SidebarToolbar extends StatelessWidget {
   }
 
   Widget _buildSettingsButton(BuildContext context) {
-    return InkIcon(icon: CupertinoIcons.settings, onTap: () => _showSettingsDialog(context), tooltip: AppLocalizations.of(context)!.settings);
+    return InkIcon(icon: CupertinoIcons.settings, color: Colors.blue, onTap: () => _showSettingsDialog(context), tooltip: AppLocalizations.of(context)!.settings);
   }
 
   Widget _buildSelectModeButton(BuildContext context) {

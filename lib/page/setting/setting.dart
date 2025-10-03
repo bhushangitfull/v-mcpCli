@@ -18,10 +18,10 @@ class _SettingPageState extends State<SettingPage> {
   List<SettingTab> _getTabs(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return [
-      SettingTab(title: l10n.general, icon: CupertinoIcons.settings, content: GeneralSettings()),
+      // SettingTab(title: l10n.general, icon: CupertinoIcons.settings, content: GeneralSettings()),
       SettingTab(title: l10n.providers, icon: CupertinoIcons.cube, content: KeysSettings()),
       SettingTab(title: l10n.mcpServer, icon: CupertinoIcons.hammer, content: McpServer()),
-      if (!kIsBrowser) SettingTab(title: l10n.dataSync, icon: CupertinoIcons.cloud_download, content: NetworkSyncSetting()),
+      // if (!kIsBrowser) SettingTab(title: l10n.dataSync, icon: CupertinoIcons.cloud_download, content: NetworkSyncSetting()),
     ];
   }
 

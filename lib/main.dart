@@ -83,13 +83,15 @@ class MyApp extends StatelessWidget {
           scaffoldMessengerKey: _scaffoldMessengerKey,
           navigatorKey: navigatorKey,
           title: 'Mcp-C',
-          theme: ThemeData(useMaterial3: true, brightness: Brightness.light, fontFamily: getPlatformFontFamily()),
+          theme: ThemeData(useMaterial3: true, brightness: Brightness.light, fontFamily: getPlatformFontFamily(), iconTheme: IconThemeData(
+      color: Colors.blue, // Change to your desired color
+    ),),
           darkTheme: ThemeData(useMaterial3: true, brightness: Brightness.dark, fontFamily: getPlatformFontFamily()),
-          themeMode: _getThemeMode(settings.generalSetting.theme),
+          themeMode: ThemeMode.dark,
           home: LayoutPage(),
           locale: Locale(settings.generalSetting.locale),
-          builder: BotToastInit(), //1.调用BotToastInit
-          navigatorObservers: [BotToastNavigatorObserver()], //2.注册路由观察者
+          builder: BotToastInit(), 
+          navigatorObservers: [BotToastNavigatorObserver()], 
           localizationsDelegates: const [
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,
