@@ -94,7 +94,7 @@ class GeneralSetting {
   int maxMessages;
   int maxLoops;
 
-  // 代理设置
+  
   bool enableProxy = false;
   String proxyType = 'HTTP'; // HTTP, HTTPS, SOCKS4, SOCKS5
   String proxyHost = '';

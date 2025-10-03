@@ -11,7 +11,7 @@ const ansiBlue = '\x1B[34m';
 const ansiMagenta = '\x1B[35m';
 const ansiGray = '\x1B[37m';
 
-// Get color for log level
+
 String getLevelColor(Level level) {
   switch (level.name) {
     case 'SEVERE':

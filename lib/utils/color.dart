@@ -9,13 +9,12 @@ class AppColors {
   static const MaterialColor blue = Colors.blue;
   static const Color transparent = Colors.transparent;
 
-  /// Returns the corresponding color based on the theme
+  
   static Color getThemeColor(BuildContext context, {Color? lightColor, Color? darkColor}) {
     final brightness = Theme.of(context).brightness;
     return brightness == Brightness.light ? (lightColor ?? black) : (darkColor ?? white);
   }
 
-  /// Gets the background color related to the theme
   static Color getThemeBackgroundColor(BuildContext context) {
     return getThemeColor(context, lightColor: grey[200], darkColor: grey[800]);
   }
@@ -28,7 +27,7 @@ class AppColors {
     return getThemeColor(
       context,
       lightColor: Colors.white,
-      darkColor: const Color(0xFF1E1E1E), // 修复Linux透明度问题，使用实心背景
+      darkColor: const Color(0xFF1E1E1E), 
     );
   }
 
@@ -36,7 +35,7 @@ class AppColors {
     return getThemeColor(
       context,
       lightColor: Colors.grey[200],
-      darkColor: Colors.grey[850], // 侧边栏使用更深的颜色以区分主区域
+      darkColor: Colors.grey[850], 
     );
   }
 
@@ -95,7 +94,7 @@ class AppColors {
     return getThemeColor(
       context,
       lightColor: AppColors.grey[100],
-      darkColor: const Color(0xFF2D2D2D), // 深色主题下使用更明显的背景色
+      darkColor: const Color(0xFF2D2D2D), 
     );
   }
 

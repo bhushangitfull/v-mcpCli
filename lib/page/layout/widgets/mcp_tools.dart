@@ -21,7 +21,7 @@ class _McpToolsState extends State<McpTools> {
   bool _isLoading = true;
   String? _error;
 
-  // 服务器状态提供者
+
   final ServerStateProvider _stateProvider = ServerStateProvider();
 
   @override
@@ -33,7 +33,7 @@ class _McpToolsState extends State<McpTools> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 监听 provider 变化并重新加载服务器列表
+  
     final provider = Provider.of<McpServerProvider>(context);
     if (provider.loadingServerTools == false) {
       _loadServers();
@@ -69,27 +69,27 @@ class _McpToolsState extends State<McpTools> {
     }
   }
 
-  // 处理服务器的状态切换
+
   Future<void> _handleServerToggle(BuildContext context, String serverName, bool newValue) async {
     final provider = Provider.of<McpServerProvider>(context, listen: false);
 
-    // 更新启用状态
+   
     _stateProvider.setEnabled(serverName, newValue);
 
-    // 更新Provider中的状态
+ 
     provider.toggleToolCategory(serverName, newValue);
 
-    // 如果新状态为true且服务器未运行，则启动服务器
+   
     if (newValue && !provider.mcpServerIsRunning(serverName)) {
-      // 设置启动中状态
+      
       _stateProvider.setStarting(serverName, true);
 
       try {
         await provider.startMcpServer(serverName);
-        // 更新运行状态
+       
         _stateProvider.setRunning(serverName, true);
       } catch (e) {
-        // 启动失败，更新状态
+    
         _stateProvider.setRunning(serverName, false);
         _stateProvider.setStarting(serverName, false);
       }
@@ -137,7 +137,7 @@ class _McpToolsState extends State<McpTools> {
     final McpServerProvider provider = Provider.of<McpServerProvider>(context, listen: false);
     final List<Widget> menuItems = [];
 
-    // 处理加载状态
+  
     if (_isLoading) {
       return [
         const SizedBox(

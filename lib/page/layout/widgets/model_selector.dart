@@ -15,14 +15,14 @@ class ModelSelector extends StatefulWidget {
 }
 
 class _ModelSelectorState extends State<ModelSelector> {
-  // 缓存future避免重复执行
+
   List<llm_model.Model> _models = [];
 
   @override
   void initState() {
     super.initState();
     _updateModels();
-    // 添加监听器
+
     ProviderManager.settingsProvider.addListener(_updateModels);
   }
 
@@ -60,7 +60,7 @@ class _ModelSelectorState extends State<ModelSelector> {
   }
 }
 
-// 创建一个通知类来监听弹出窗口的打开状态
+
 class PopupNotification extends Notification {
   final bool opened;
   PopupNotification(this.opened);
@@ -78,11 +78,11 @@ class ModelSelectorPopup extends StatefulWidget {
 }
 
 class _ModelSelectorPopupState extends State<ModelSelectorPopup> {
-  // 按 provider 对模型进行分组并根据搜索文本过滤
+
   Map<String, List<llm_model.Model>> _getFilteredModelsByProvider(String searchText) {
     final modelsByProvider = <String, List<llm_model.Model>>{};
 
-    // 筛选匹配搜索文本的模型
+   
     final filteredModels = widget.availableModels.where((model) {
       return searchText.isEmpty || model.label.toLowerCase().contains(searchText) || model.providerId.toLowerCase().contains(searchText);
     }).toList();
@@ -94,7 +94,7 @@ class _ModelSelectorPopupState extends State<ModelSelectorPopup> {
     return modelsByProvider;
   }
 
-  // 构建模型列表
+
   Widget _buildModelList(String searchText) {
     final modelsByProvider = _getFilteredModelsByProvider(searchText);
 
@@ -105,14 +105,14 @@ class _ModelSelectorPopupState extends State<ModelSelectorPopup> {
     final List<Widget> items = [];
 
     modelsByProvider.forEach((provider, models) {
-      // 添加分隔线
+    
       if (items.isNotEmpty) {
         items.add(const PopupDivider());
       }
 
       final firstModel = models.first;
 
-      // 添加提供商标题
+    
       items.add(
         PopupGroupHeader(
           title: firstModel.providerName,
@@ -120,7 +120,6 @@ class _ModelSelectorPopupState extends State<ModelSelectorPopup> {
         ),
       );
 
-      // 添加该提供商下的所有模型
       for (var model in models) {
         items.add(
           PopupListItem(

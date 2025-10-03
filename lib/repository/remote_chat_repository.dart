@@ -15,7 +15,7 @@ class RemoteChatRepository implements ChatRepository {
 
   @override
   Future<ChatListResult> getChats({
-    int page = 1, // 页码从 1 开始
+    int page = 1, 
     int pageSize = PaginationConfig.defaultPageSize,
     String? searchKeyword,
   }) async {

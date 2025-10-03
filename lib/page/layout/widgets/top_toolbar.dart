@@ -207,9 +207,7 @@ class TopToolbar extends StatelessWidget {
               if (hideSidebar && kIsDesktop) ...[
                 // Show app logo and name when sidebar is hidden
                 if (!kIsMacOS) ...[
-                  Image.asset('assets/logo.png', width: 24, height: 24),
-                  const Gap(size: 8),
-                  CText(text: 'ChatMCP', size: 12, fontWeight: FontWeight.w700),
+                  CText(text: 'MCP-C', size: 12, fontWeight: FontWeight.w700),
                   const Gap(size: 24),
                 ],
 
