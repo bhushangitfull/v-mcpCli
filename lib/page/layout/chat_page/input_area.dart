@@ -10,7 +10,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:chatmcp/widgets/ink_icon.dart';
 import 'package:chatmcp/utils/color.dart';
 import 'package:chatmcp/page/layout/widgets/conv_setting.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class SubmitData {
   final String text;
@@ -52,12 +51,8 @@ class InputAreaState extends State<InputArea> {
   List<PlatformFile> _selectedFiles = [];
   final TextEditingController textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  bool _isTextFieldFocused = false;
   bool _isImeComposing = false;
-
-  // Speech to text
-  late stt.SpeechToText _speech;
-  bool _isListening = false;
-  String _voiceInput = '';
 
   @override
   void initState() {
@@ -70,7 +65,12 @@ class InputAreaState extends State<InputArea> {
         }
       });
     }
-    _speech = stt.SpeechToText();
+
+    _focusNode.addListener(() {
+      setState(() {
+        _isTextFieldFocused = _focusNode.hasFocus;
+      });
+    });
   }
 
   @override
@@ -90,38 +90,6 @@ class InputAreaState extends State<InputArea> {
   void dispose() {
     _focusNode.dispose();
     super.dispose();
-  }
-
-  void _listen() async {
-    if (!_isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (val) {
-          if (val == 'done' || val == 'notListening') {
-            setState(() => _isListening = false);
-          }
-        },
-        onError: (val) {
-          setState(() => _isListening = false);
-        },
-      );
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (val) {
-            setState(() {
-              _voiceInput = val.recognizedWords;
-              textController.text = _voiceInput;
-              textController.selection = TextSelection.fromPosition(
-                TextPosition(offset: textController.text.length),
-              );
-            });
-          },
-        );
-      }
-    } else {
-      setState(() => _isListening = false);
-      _speech.stop();
-    }
   }
 
   void requestFocus() {
@@ -195,10 +163,15 @@ class InputAreaState extends State<InputArea> {
     final l10n = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
-        // color: Theme.of(context).cardColor,
         color: AppColors.getInputAreaBackgroundColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.getInputAreaBorderColor(context), width: 1),
+        border: Border.all(
+          color: _isTextFieldFocused
+              ? const Color.fromARGB(255, 119, 226, 215)
+              : AppColors.getInputAreaBorderColor(context),
+          width: _isTextFieldFocused ? 2.5 : 1.5,
+        ),
+  
       ),
       margin: const EdgeInsets.only(left: 12.0, right: 12.0, top: 2.0, bottom: 8.0),
       child: Column(
@@ -253,7 +226,7 @@ class InputAreaState extends State<InputArea> {
                               ),
                             ),
                             Material(
-                              color: Colors.transparent,
+                              color: const Color.fromARGB(232, 25, 233, 205),
                               child: InkWell(
                                 onTap: () => _removeFile(index),
                                 borderRadius: const BorderRadius.only(topRight: Radius.circular(8), bottomRight: Radius.circular(8)),
@@ -363,16 +336,6 @@ class InputAreaState extends State<InputArea> {
                           tooltip: AppLocalizations.of(context)!.uploadFile,
                         ),
                       ],
-                      const SizedBox(width: 10),
-                      // Mic button for voice input
-                      InkIcon(
-                        icon: _isListening ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
-                        onTap: widget.disabled ? null : _listen,
-                        tooltip: _isListening
-                            ? AppLocalizations.of(context)!.cancel
-                            : AppLocalizations.of(context)!.speak,
-                        color: _isListening ? Colors.red : null,
-                      ),
                       const SizedBox(width: 10),
                       const ConvSetting(),
                     ],

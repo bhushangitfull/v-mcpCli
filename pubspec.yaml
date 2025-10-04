@@ -82,7 +82,7 @@ dependencies:
   qr_flutter: ^4.1.0  
   mobile_scanner: ^7.0.1  
   dio: ^5.4.0  
-  speech_to_text: ^6.6.0
+  # record: ^5.1.2
 
 
 dev_dependencies:
