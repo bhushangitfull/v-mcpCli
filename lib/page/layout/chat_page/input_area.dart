@@ -171,13 +171,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Voice Recording on Linux'),
-        content: const Text(
-          'Direct voice recording is not yet supported on Linux.\n\n'
-          'You can:\n'
-          '1. Record audio using system tools (e.g., GNOME Sound Recorder)\n'
-          '2. Upload the audio file using the button below\n'
-          '3. Wait for future updates with integrated recording',
-        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -196,7 +189,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               });
               _pickAudioFile();
             },
-            child: const Text('Upload Audio File'),
+            child: const Text('Start Listening'),
           ),
         ],
       ),
@@ -569,97 +562,82 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     if (_currentMode != InputMode.voice && _slideAnimation.value < 0.5) {
       return const SizedBox.shrink();
     }
-    
-    return Container(
-      padding: const EdgeInsets.all(32.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Icon
-          Icon(
-            CupertinoIcons.mic_circle,
-            size: 80,
-            color: const Color(0xFF77E2D7).withOpacity(0.5),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Title
-          Text(
-            'Voice Input',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).textTheme.bodyLarge?.color,
+
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Icon
+            Icon(
+              CupertinoIcons.mic_circle,
+              size: 80,
+              color: const Color(0xFF77E2D7).withOpacity(0.5),
             ),
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Info text
-          Text(
-            'Upload an audio file to send voice message',
-            style: TextStyle(
-              fontSize: 13,
-              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Upload audio button
-          FilledButton.icon(
-            onPressed: widget.disabled ? null : _pickAudioFile,
-            icon: const Icon(CupertinoIcons.music_note, size: 20),
-            label: const Text('Upload Audio File'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF77E2D7),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+
+            const SizedBox(height: 24),
+
+            // Title
+            Text(
+              'Voice Input',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
             ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Supported formats
-          Text(
-            'Supported: MP3, WAV, M4A, OGG, FLAC, AAC',
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.5),
-            ),
-          ),
-          
-          // Submit button if audio is attached
-          if (_selectedFiles.any((f) => ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].contains(f.extension?.toLowerCase())))
-            Padding(
-              padding: const EdgeInsets.only(top: 24.0),
-              child: FilledButton.icon(
-                onPressed: () {
-                  if (textController.text.trim().isEmpty) {
-                    textController.text = 'Voice message';
-                  }
-                  widget.onSubmitted(SubmitData(textController.text, _selectedFiles));
-                  _afterSubmitted();
-                  _toggleMode(InputMode.text);
-                },
-                icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
-                label: Text(l10n.send),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF77E2D7),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+
+            const SizedBox(height: 12),
+
+            const SizedBox(height: 24),
+
+            // Upload audio button
+            FilledButton.icon(
+              onPressed: widget.disabled ? null : _pickAudioFile,
+              icon: const Icon(CupertinoIcons.music_note, size: 20),
+              label: const Text('Start Listening'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF77E2D7),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
-        ],
+
+            const SizedBox(height: 16),
+
+            // Submit button if audio is attached
+            if (_selectedFiles.any((f) => ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].contains(f.extension?.toLowerCase())))
+              Padding(
+                padding: const EdgeInsets.only(top: 24.0),
+                child: FilledButton.icon(
+                  onPressed: () {
+                    if (textController.text.trim().isEmpty) {
+                      textController.text = 'Voice message';
+                    }
+                    widget.onSubmitted(SubmitData(textController.text, _selectedFiles));
+                    _afterSubmitted();
+                    _toggleMode(InputMode.text);
+                  },
+                  icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
+                  label: Text(l10n.send),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF77E2D7),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
