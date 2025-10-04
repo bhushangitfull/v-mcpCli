@@ -544,7 +544,7 @@ class SidebarToolbar extends StatelessWidget {
   }
 
   Widget _buildSettingsButton(BuildContext context) {
-    return InkIcon(icon: CupertinoIcons.settings, color: Colors.blue, onTap: () => _showSettingsDialog(context), tooltip: AppLocalizations.of(context)!.settings);
+    return InkIcon(icon: CupertinoIcons.settings,  onTap: () => _showSettingsDialog(context), tooltip: AppLocalizations.of(context)!.settings);
   }
 
   Widget _buildSelectModeButton(BuildContext context) {

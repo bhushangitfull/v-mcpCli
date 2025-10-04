@@ -868,4 +868,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noMoreData => '没有更多了';
+
+  @override
+  String get speak => 'Speak';
 }

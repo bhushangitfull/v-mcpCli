@@ -875,4 +875,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get noMoreData => 'Keine weiteren Daten';
+
+  @override
+  String get speak => 'Speak';
 }

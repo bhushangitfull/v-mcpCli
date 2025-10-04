@@ -10,6 +10,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:chatmcp/widgets/ink_icon.dart';
 import 'package:chatmcp/utils/color.dart';
 import 'package:chatmcp/page/layout/widgets/conv_setting.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class SubmitData {
   final String text;
@@ -53,6 +54,11 @@ class InputAreaState extends State<InputArea> {
   final FocusNode _focusNode = FocusNode();
   bool _isImeComposing = false;
 
+  // Speech to text
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  String _voiceInput = '';
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +70,7 @@ class InputAreaState extends State<InputArea> {
         }
       });
     }
+    _speech = stt.SpeechToText();
   }
 
   @override
@@ -83,6 +90,38 @@ class InputAreaState extends State<InputArea> {
   void dispose() {
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _listen() async {
+    if (!_isListening) {
+      bool available = await _speech.initialize(
+        onStatus: (val) {
+          if (val == 'done' || val == 'notListening') {
+            setState(() => _isListening = false);
+          }
+        },
+        onError: (val) {
+          setState(() => _isListening = false);
+        },
+      );
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              _voiceInput = val.recognizedWords;
+              textController.text = _voiceInput;
+              textController.selection = TextSelection.fromPosition(
+                TextPosition(offset: textController.text.length),
+              );
+            });
+          },
+        );
+      }
+    } else {
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
   }
 
   void requestFocus() {
@@ -324,6 +363,16 @@ class InputAreaState extends State<InputArea> {
                           tooltip: AppLocalizations.of(context)!.uploadFile,
                         ),
                       ],
+                      const SizedBox(width: 10),
+                      // Mic button for voice input
+                      InkIcon(
+                        icon: _isListening ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
+                        onTap: widget.disabled ? null : _listen,
+                        tooltip: _isListening
+                            ? AppLocalizations.of(context)!.cancel
+                            : AppLocalizations.of(context)!.speak,
+                        color: _isListening ? Colors.red : null,
+                      ),
                       const SizedBox(width: 10),
                       const ConvSetting(),
                     ],

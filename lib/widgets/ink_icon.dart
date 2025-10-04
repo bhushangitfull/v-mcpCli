@@ -37,7 +37,7 @@ class InkIcon extends StatelessWidget {
               : 16.0);
 
     final Widget iconWidget = Material(
-      color: Colors.transparent,
+      color: const Color.fromARGB(0, 64, 218, 230),
       child: InkWell(
         onTap: disabled ? null : onTap,
         hoverColor: hoverColor ?? AppColors.getInkIconHoverColor(context),
@@ -46,7 +46,11 @@ class InkIcon extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
-              Icon(icon, size: effectiveSize, color: color),
+              Icon(
+                icon,
+                size: effectiveSize,
+                color: color ?? Theme.of(context).iconTheme.color ?? const Color.fromARGB(255, 51, 219, 241),
+              ),
               if (text != null) Text(text!),
               if (child != null) child!,
             ],

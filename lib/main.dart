@@ -83,10 +83,22 @@ class MyApp extends StatelessWidget {
           scaffoldMessengerKey: _scaffoldMessengerKey,
           navigatorKey: navigatorKey,
           title: 'Mcp-C',
-          theme: ThemeData(useMaterial3: true, brightness: Brightness.light, fontFamily: getPlatformFontFamily(), iconTheme: IconThemeData(
-      color: Colors.blue, // Change to your desired color
-    ),),
-          darkTheme: ThemeData(useMaterial3: true, brightness: Brightness.dark, fontFamily: getPlatformFontFamily()),
+          // theme: ThemeData(
+          //   useMaterial3: true,
+          //   brightness: Brightness.light,
+          //   fontFamily: getPlatformFontFamily(),
+          //   iconTheme: IconThemeData(
+          //     color: Colors.blue, // Change to your desired color
+          //   ),
+          // ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            fontFamily: getPlatformFontFamily(),
+            iconTheme: IconThemeData(
+              color: const Color.fromARGB(255, 26, 255, 236), // Set the same or a different color for dark mode
+            ),
+          ),
           themeMode: ThemeMode.dark,
           home: LayoutPage(),
           locale: Locale(settings.generalSetting.locale),

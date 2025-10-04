@@ -277,5 +277,6 @@
     "newChat": "New Chat",
     "send": "Send",
     "more": "More",
-    "noMoreData": "No more data"
+    "noMoreData": "No more data",
+    "speak": "Speak"
 }
