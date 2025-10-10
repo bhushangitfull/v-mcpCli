@@ -10,7 +10,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:chatmcp/widgets/ink_icon.dart';
 import 'package:chatmcp/utils/color.dart';
 import 'package:chatmcp/page/layout/widgets/conv_setting.dart';
-
+import 'dart:io';
+import 'dart:async';
 
 class SubmitData {
   final String text;
@@ -60,30 +61,31 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   late AnimationController _animationController;
   late Animation<double> _slideAnimation;
 
-  // Voice recording simulation for Linux
+  // Voice recording state
+  Process? _recordProcess;
   bool _isRecording = false;
+  String? _currentRecordingPath;
+  Timer? _recordingTimer;
+  int _recordingSeconds = 0;
+
+  // Transcription state
+  bool _isTranscribing = false;
+  bool _whisperAvailable = false;
 
   @override
   void initState() {
     super.initState();
-    
-    // Initialize animation controller
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    
-    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-    
+
+    _animationController = AnimationController(duration: const Duration(milliseconds: 300), vsync: this);
+
+    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
+
     _focusNode.addListener(() {
       setState(() {
         _isTextFieldFocused = _focusNode.hasFocus;
       });
     });
-    
-    // Auto focus on desktop when autoFocus is true
+
     if (!kIsMobile && widget.autoFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -91,12 +93,13 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         }
       });
     }
+
+    _checkWhisperAvailability();
   }
 
   @override
   void didUpdateWidget(InputArea oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Auto focus on desktop when autoFocus changes to true
     if (!kIsMobile && widget.autoFocus && !oldWidget.autoFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -110,96 +113,185 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   void dispose() {
     _focusNode.dispose();
     _animationController.dispose();
+    _recordingTimer?.cancel();
+    _stopRecording();
     super.dispose();
   }
 
-  void _toggleMode(InputMode mode) {
-    if (_currentMode == mode) return;
-    
-    setState(() {
-      _currentMode = mode;
-    });
-    
-    if (mode == InputMode.text) {
-      _animationController.reverse();
-      if (_isRecording) {
-        _stopRecording();
-      }
-    } else {
-      _animationController.forward();
+  Future<void> _checkWhisperAvailability() async {
+    try {
+      final result = await Process.run('which', ['whisper']);
+      setState(() {
+        _whisperAvailable = result.exitCode == 0;
+      });
+      debugPrint('Whisper available: $_whisperAvailable');
+    } catch (e) {
+      debugPrint('Error checking Whisper: $e');
+      setState(() {
+        _whisperAvailable = false;
+      });
     }
   }
 
-  Future<void> _pickAudioFile() async {
+  Future<void> _startRecording() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        allowMultiple: false,
-        type: FileType.custom,
-        allowedExtensions: ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'],
-      );
+      // Check if arecord is available
+      final checkArecord = await Process.run('which', ['arecord']);
+      if (checkArecord.exitCode != 0) {
+        _showError('arecord not found. Please install alsa-utils');
+        return;
+      }
 
-      if (result != null && result.files.isNotEmpty) {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      _currentRecordingPath = '/tmp/recording_$timestamp.wav';
+
+      // Start recording with arecord
+      _recordProcess = await Process.start('arecord', [
+        '-f', 'cd', // CD quality (44.1kHz, 16-bit, stereo)
+        '-t', 'wav', // WAV format
+        _currentRecordingPath!,
+      ]);
+
+      // Listen to errors
+      _recordProcess!.stderr.transform(const SystemEncoding().decoder).listen((data) {
+        debugPrint('arecord stderr: $data');
+      });
+
+      setState(() {
+        _isRecording = true;
+        _recordingSeconds = 0;
+      });
+
+      // Start timer
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         setState(() {
-          _selectedFiles = [..._selectedFiles, ...result.files];
+          _recordingSeconds++;
         });
-        widget.onFilesSelected?.call(_selectedFiles);
-        
-        // Show success message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Audio file attached: ${result.files.first.name}'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
+      });
+
+      _showSuccess('Recording started');
+    } catch (e) {
+      debugPrint('Error starting recording: $e');
+      _showError('Failed to start recording: ${e.toString()}');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (_recordProcess != null) {
+      _recordProcess!.kill(ProcessSignal.sigint);
+      await _recordProcess!.exitCode;
+      _recordProcess = null;
+    }
+
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+
+    if (_isRecording) {
+      setState(() {
+        _isRecording = false;
+      });
+
+      // Check if file was created
+      if (_currentRecordingPath != null) {
+        final file = File(_currentRecordingPath!);
+        if (await file.exists()) {
+          final fileSize = await file.length();
+          debugPrint('Recording saved: $_currentRecordingPath (${fileSize} bytes)');
+
+          if (fileSize > 0) {
+            // Transcribe if Whisper is available
+            if (_whisperAvailable) {
+              await _transcribeAudio(_currentRecordingPath!);
+            } else {
+              // Just attach the audio file
+              await _attachAudioFile(_currentRecordingPath!);
+            }
+          } else {
+            _showError('Recording is empty');
+          }
+        } else {
+          _showError('Recording file not found');
         }
       }
-    } catch (e) {
-      debugPrint('Error picking audio file: $e');
     }
   }
 
-  void _startRecording() {
-    // On Linux, we'll just show UI simulation
-    // In production, you could use external recording tool or service
-    setState(() {
-      _isRecording = true;
-    });
-    
-    // Show info dialog
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Voice Recording on Linux'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() {
-                _isRecording = false;
-              });
-            },
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() {
-                _isRecording = false;
-              });
-              _pickAudioFile();
-            },
-            child: const Text('Start Listening'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _attachAudioFile(String audioPath) async {
+    try {
+      final file = File(audioPath);
+      final platformFile = PlatformFile(
+        name: 'voice_recording_${DateTime.now().millisecondsSinceEpoch}.wav',
+        size: await file.length(),
+        path: audioPath,
+      );
+
+      setState(() {
+        _selectedFiles = [..._selectedFiles, platformFile];
+      });
+      widget.onFilesSelected?.call(_selectedFiles);
+
+      _showInfo('Audio recording attached. Install Whisper for auto-transcription.');
+      _toggleMode(InputMode.text);
+    } catch (e) {
+      _showError('Failed to attach audio: ${e.toString()}');
+    }
   }
 
-  void _stopRecording() {
+  Future<void> _transcribeAudio(String audioPath) async {
     setState(() {
-      _isRecording = false;
+      _isTranscribing = true;
     });
+
+    try {
+      debugPrint('Starting transcription of: $audioPath');
+
+      final tempDir = Directory.systemTemp.createTempSync('whisper_');
+      final outputPath = '${tempDir.path}/transcription';
+
+      final result = await Process.run('whisper', [
+        audioPath,
+        '--model',
+        'base',
+        '--output_format',
+        'txt',
+        '--output_dir',
+        tempDir.path,
+        '--language',
+        'en',
+      ]);
+
+      debugPrint('Whisper exit code: ${result.exitCode}');
+
+      if (result.exitCode == 0) {
+        final transcriptionFile = File('$outputPath.txt');
+        if (await transcriptionFile.exists()) {
+          final transcription = await transcriptionFile.readAsString();
+
+          await tempDir.delete(recursive: true);
+
+          if (transcription.trim().isNotEmpty) {
+            textController.text = transcription.trim();
+            widget.onTextChanged(transcription.trim());
+
+            _showSuccess('Transcription completed!');
+            _toggleMode(InputMode.text);
+          } else {
+            _showError('No speech detected in recording');
+          }
+        } else {
+          _showError('Transcription file not found');
+        }
+      } else {
+        _showError('Transcription failed');
+      }
+    } catch (e) {
+      debugPrint('Error transcribing: $e');
+      _showError('Transcription error: ${e.toString()}');
+    } finally {
+      setState(() {
+        _isTranscribing = false;
+      });
+    }
   }
 
   void _toggleRecording() {
@@ -208,6 +300,82 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     } else {
       _startRecording();
     }
+  }
+
+  void _toggleMode(InputMode mode) {
+    if (_currentMode == mode) return;
+
+    // Stop recording if switching away from voice mode
+    if (_currentMode == InputMode.voice && _isRecording) {
+      _stopRecording();
+    }
+
+    setState(() {
+      _currentMode = mode;
+    });
+
+    if (mode == InputMode.text) {
+      _animationController.reverse();
+    } else {
+      _animationController.forward();
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showInfo(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   void requestFocus() {
@@ -256,6 +424,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   void _afterSubmitted() {
     textController.clear();
     _selectedFiles.clear();
+    _currentRecordingPath = null;
   }
 
   String _truncateFileName(String fileName) {
@@ -295,7 +464,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Mode selector tabs
           Padding(
             padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 12.0, bottom: 8.0),
             child: Row(
@@ -320,47 +488,32 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               ],
             ),
           ),
-          
-          // Animated content area
+
           AnimatedBuilder(
             animation: _slideAnimation,
             builder: (context, child) {
               return Stack(
                 children: [
-                  // Text input area
                   Opacity(
                     opacity: 1.0 - _slideAnimation.value,
-                    child: Transform.translate(
-                      offset: Offset(-50 * _slideAnimation.value, 0),
-                      child: _buildTextInputArea(context, l10n),
-                    ),
+                    child: Transform.translate(offset: Offset(-50 * _slideAnimation.value, 0), child: _buildTextInputArea(context, l10n)),
                   ),
-                  // Voice input area
                   Opacity(
                     opacity: _slideAnimation.value,
-                    child: Transform.translate(
-                      offset: Offset(50 * (1.0 - _slideAnimation.value), 0),
-                      child: _buildVoiceInputArea(context, l10n),
-                    ),
+                    child: Transform.translate(offset: Offset(50 * (1.0 - _slideAnimation.value), 0), child: _buildVoiceInputArea(context, l10n)),
                   ),
                 ],
               );
             },
           ),
-          
-          // Action buttons at bottom
+
           if (_currentMode == InputMode.text) _buildTextActionButtons(context, l10n),
         ],
       ),
     );
   }
 
-  Widget _buildModeTab({
-    required String label,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildModeTab({required String label, required IconData icon, required bool isSelected, required VoidCallback onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -369,27 +522,14 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
-            color: isSelected 
-                ? const Color(0xFF77E2D7).withOpacity(0.15)
-                : Colors.transparent,
+            color: isSelected ? const Color(0xFF77E2D7).withOpacity(0.15) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected 
-                  ? const Color(0xFF77E2D7)
-                  : Colors.transparent,
-              width: 1.5,
-            ),
+            border: Border.all(color: isSelected ? const Color(0xFF77E2D7) : Colors.transparent, width: 1.5),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 16,
-                color: isSelected 
-                    ? const Color(0xFF77E2D7)
-                    : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
-              ),
+              Icon(icon, size: 16, color: isSelected ? const Color(0xFF77E2D7) : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5)),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -397,9 +537,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                   fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   letterSpacing: 0.5,
-                  color: isSelected 
-                      ? const Color(0xFF77E2D7)
-                      : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                  color: isSelected ? const Color(0xFF77E2D7) : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
                 ),
               ),
             ],
@@ -413,7 +551,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     if (_currentMode != InputMode.text && _slideAnimation.value > 0.5) {
       return const SizedBox.shrink();
     }
-    
+
     return Column(
       children: [
         if (_selectedFiles.isNotEmpty)
@@ -434,14 +572,14 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                       file.extension?.toLowerCase() == 'jpeg' ||
                       file.extension?.toLowerCase() == 'png' ||
                       file.extension?.toLowerCase() == 'gif';
-                  
-                  final isAudio = 
+
+                  final isAudio =
                       file.extension?.toLowerCase() == 'm4a' ||
                       file.extension?.toLowerCase() == 'mp3' ||
                       file.extension?.toLowerCase() == 'wav' ||
                       file.extension?.toLowerCase() == 'ogg' ||
                       file.extension?.toLowerCase() == 'flac' ||
-                      file.extension?.toLowerCase() == 'aac';
+                      file.name.startsWith('voice_recording');
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
@@ -458,8 +596,11 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                             child: Row(
                               children: [
                                 Icon(
-                                  isImage ? Icons.image : 
-                                  isAudio ? Icons.audiotrack : Icons.insert_drive_file,
+                                  isImage
+                                      ? Icons.image
+                                      : isAudio
+                                      ? Icons.mic
+                                      : Icons.insert_drive_file,
                                   size: 16,
                                   color: AppColors.getInputAreaFileIconColor(context),
                                 ),
@@ -564,81 +705,135 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     }
 
     return Center(
+      // Add this wrapper
       child: Container(
         padding: const EdgeInsets.all(32.0),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min, // Add this
           children: [
-            // Icon
-            Icon(
-              CupertinoIcons.mic_circle,
-              size: 80,
-              color: const Color(0xFF77E2D7).withOpacity(0.5),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Title
-            Text(
-              'Voice Input',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).textTheme.bodyLarge?.color,
+            if (_isTranscribing) ...[
+              // Transcribing animation
+              const SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(strokeWidth: 3, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF77E2D7))),
               ),
-            ),
+              const SizedBox(height: 24),
+              Text(
+                'Transcribing audio...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Theme.of(context).textTheme.bodyLarge?.color),
+              ),
+              const SizedBox(height: 8),
+              Text('This may take a moment', style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6))),
+            ] else ...[
+              // Waveform animation when recording
+              if (_isRecording) SizedBox(height: 80, child: Center(child: _buildWaveform())),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 24),
 
-            const SizedBox(height: 24),
-
-            // Upload audio button
-            FilledButton.icon(
-              onPressed: widget.disabled ? null : _pickAudioFile,
-              icon: const Icon(CupertinoIcons.music_note, size: 20),
-              label: const Text('Start Listening'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF77E2D7),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              // Recording timer
+              if (_isRecording)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _formatDuration(_recordingSeconds),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Submit button if audio is attached
-            if (_selectedFiles.any((f) => ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].contains(f.extension?.toLowerCase())))
-              Padding(
-                padding: const EdgeInsets.only(top: 24.0),
-                child: FilledButton.icon(
-                  onPressed: () {
-                    if (textController.text.trim().isEmpty) {
-                      textController.text = 'Voice message';
-                    }
-                    widget.onSubmitted(SubmitData(textController.text, _selectedFiles));
-                    _afterSubmitted();
-                    _toggleMode(InputMode.text);
-                  },
-                  icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
-                  label: Text(l10n.send),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF77E2D7),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+              const SizedBox(height: 24),
+
+              // Record button
+              GestureDetector(
+                onTap: widget.disabled ? null : _toggleRecording,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _isRecording ? Colors.red.withOpacity(0.2) : const Color(0xFF77E2D7).withOpacity(0.2),
+                    border: Border.all(color: _isRecording ? Colors.red : const Color(0xFF77E2D7), width: 3),
+                  ),
+                  child: Icon(
+                    _isRecording ? CupertinoIcons.stop_fill : CupertinoIcons.mic_fill,
+                    size: 36,
+                    color: _isRecording ? Colors.red : const Color(0xFF77E2D7),
                   ),
                 ),
               ),
+
+              const SizedBox(height: 16),
+
+              // Instructions
+              Text(
+                _isRecording ? 'Tap to stop Listening' : 'Tap to start Listening',
+                style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7)),
+                textAlign: TextAlign.center,
+              ),
+
+              if (_isRecording)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    'Recording from microphone...',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.5)),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildWaveform() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(15, (index) {
+        return TweenAnimationBuilder<double>(
+          duration: Duration(milliseconds: 300 + (index * 100)),
+          tween: Tween(begin: 10.0, end: 30.0 + (index % 4) * 10.0),
+          builder: (context, value, child) {
+            return AnimatedContainer(
+              duration: Duration(milliseconds: 300 + (index * 50)),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              width: 4,
+              height: value,
+              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2)),
+            );
+          },
+          onEnd: () {
+            // Loop the animation
+            if (mounted && _isRecording) {
+              setState(() {});
+            }
+          },
+        );
+      }),
     );
   }
 
