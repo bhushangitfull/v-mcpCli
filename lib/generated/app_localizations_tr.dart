@@ -877,4 +877,25 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get speak => 'Speak';
+
+  @override
+  String get microphonePermissionDenied => 'Microphone permission denied';
+
+  @override
+  String get recordingStarted => 'Recording started';
+
+  @override
+  String get failedToStartRecording => 'Failed to start recording';
+
+  @override
+  String get transcribing => 'Transcribing audio...';
+
+  @override
+  String get tapToStopListening => 'Tap to stop listening';
+
+  @override
+  String get tapToStartListening => 'Tap to start listening';
+
+  @override
+  String get recordingFromMicrophone => 'Recording from microphone...';
 }

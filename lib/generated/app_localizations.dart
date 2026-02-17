@@ -1749,6 +1749,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Speak'**
   String get speak;
+
+  /// No description provided for @microphonePermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone permission denied'**
+  String get microphonePermissionDenied;
+
+  /// No description provided for @recordingStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording started'**
+  String get recordingStarted;
+
+  /// No description provided for @failedToStartRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to start recording'**
+  String get failedToStartRecording;
+
+  /// No description provided for @transcribing.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcribing audio...'**
+  String get transcribing;
+
+  /// No description provided for @tapToStopListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to stop listening'**
+  String get tapToStopListening;
+
+  /// No description provided for @tapToStartListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to start listening'**
+  String get tapToStartListening;
+
+  /// No description provided for @recordingFromMicrophone.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording from microphone...'**
+  String get recordingFromMicrophone;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

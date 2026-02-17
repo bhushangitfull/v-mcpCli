@@ -12,6 +12,8 @@ import 'package:chatmcp/utils/color.dart';
 import 'package:chatmcp/page/layout/widgets/conv_setting.dart';
 import 'dart:io';
 import 'dart:async';
+import 'package:chatmcp/services/voice_service.dart';
+
 
 class SubmitData {
   final String text;
@@ -65,12 +67,15 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   Process? _recordProcess;
   bool _isRecording = false;
   String? _currentRecordingPath;
+
+
+  // Transcription state
+  final VoiceService _voiceService = VoiceService();
+  bool _isTranscribing = false;
+  bool _whisperAvailable = false;
   Timer? _recordingTimer;
   int _recordingSeconds = 0;
 
-  // Transcription state
-  bool _isTranscribing = false;
-  bool _whisperAvailable = false;
 
   @override
   void initState() {
@@ -110,13 +115,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   }
 
   @override
-  void dispose() {
-    _focusNode.dispose();
-    _animationController.dispose();
-    _recordingTimer?.cancel();
-    _stopRecording();
-    super.dispose();
-  }
 
   Future<void> _checkWhisperAvailability() async {
     try {
@@ -130,89 +128,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
       setState(() {
         _whisperAvailable = false;
       });
-    }
-  }
-
-  Future<void> _startRecording() async {
-    try {
-      // Check if arecord is available
-      final checkArecord = await Process.run('which', ['arecord']);
-      if (checkArecord.exitCode != 0) {
-        _showError('arecord not found. Please install alsa-utils');
-        return;
-      }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      _currentRecordingPath = '/tmp/recording_$timestamp.wav';
-
-      // Start recording with arecord
-      _recordProcess = await Process.start('arecord', [
-        '-f', 'cd', // CD quality (44.1kHz, 16-bit, stereo)
-        '-t', 'wav', // WAV format
-        _currentRecordingPath!,
-      ]);
-
-      // Listen to errors
-      _recordProcess!.stderr.transform(const SystemEncoding().decoder).listen((data) {
-        debugPrint('arecord stderr: $data');
-      });
-
-      setState(() {
-        _isRecording = true;
-        _recordingSeconds = 0;
-      });
-
-      // Start timer
-      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        setState(() {
-          _recordingSeconds++;
-        });
-      });
-
-      _showSuccess('Recording started');
-    } catch (e) {
-      debugPrint('Error starting recording: $e');
-      _showError('Failed to start recording: ${e.toString()}');
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    if (_recordProcess != null) {
-      _recordProcess!.kill(ProcessSignal.sigint);
-      await _recordProcess!.exitCode;
-      _recordProcess = null;
-    }
-
-    _recordingTimer?.cancel();
-    _recordingTimer = null;
-
-    if (_isRecording) {
-      setState(() {
-        _isRecording = false;
-      });
-
-      // Check if file was created
-      if (_currentRecordingPath != null) {
-        final file = File(_currentRecordingPath!);
-        if (await file.exists()) {
-          final fileSize = await file.length();
-          debugPrint('Recording saved: $_currentRecordingPath (${fileSize} bytes)');
-
-          if (fileSize > 0) {
-            // Transcribe if Whisper is available
-            if (_whisperAvailable) {
-              await _transcribeAudio(_currentRecordingPath!);
-            } else {
-              // Just attach the audio file
-              await _attachAudioFile(_currentRecordingPath!);
-            }
-          } else {
-            _showError('Recording is empty');
-          }
-        } else {
-          _showError('Recording file not found');
-        }
-      }
     }
   }
 
@@ -294,13 +209,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     }
   }
 
-  void _toggleRecording() {
-    if (_isRecording) {
-      _stopRecording();
-    } else {
-      _startRecording();
-    }
-  }
 
   void _toggleMode(InputMode mode) {
     if (_currentMode == mode) return;
@@ -444,6 +352,151 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         '${nameWithoutExt.substring(nameWithoutExt.length - truncatedLength)}'
         '$extension';
   }
+
+  @override
+  void dispose() {
+    _voiceService.dispose();
+    _recordingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_voiceService.isRecording) {
+      await _stopRecording();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    final hasPermission = await _voiceService.hasPermission();
+    if (!hasPermission) {
+      final granted = await _voiceService.requestPermission();
+      if (!granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission denied')),
+          );
+        }
+        return;
+      }
+    }
+
+    final started = await _voiceService.startRecording();
+    if (started) {
+      setState(() {
+        _isRecording = true;
+        _recordingSeconds = 0;
+      });
+
+      // Start timer
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted) {
+          setState(() {
+            _recordingSeconds++;
+          });
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recording started')),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to start recording')),
+        );
+      }
+    }
+  }
+
+   Future<void> _stopRecording() async {
+    _recordingTimer?.cancel();
+    final audioPath = await _voiceService.stopRecording();
+
+    setState(() {
+      _isRecording = false;
+      _recordingSeconds = 0;
+    });
+
+    if (audioPath == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to stop recording')),
+        );
+      }
+      return;
+    }
+
+    // Try to transcribe with Whisper API
+    setState(() {
+      _isTranscribing = true;
+    });
+
+    try {
+      // Find OpenAI API key from settings
+      final providers = ProviderManager.settingsProvider?.providers ?? [];
+      String? openaiApiKey;
+      String? baseUrl;
+
+      for (final provider in providers) {
+        if (provider.providerId == 'openai' || provider.apiStyle == 'openai') {
+          openaiApiKey = provider.apiKey;
+          baseUrl = provider.baseUrl;
+          break;
+        }
+      }
+
+      if (openaiApiKey != null && openaiApiKey.isNotEmpty) {
+        final transcription = await _voiceService.transcribeWithWhisper(
+          audioPath,
+          openaiApiKey,
+          baseUrl: baseUrl ?? 'https://api.openai.com/v1',
+        );
+
+        if (transcription != null && transcription.isNotEmpty) {
+          // Insert transcription into text field
+          setState(() {
+            textController.text = transcription;
+            _isTranscribing = false;
+          });
+          return;
+        }
+      }
+
+      // Fallback: attach audio file if transcription failed or no API key
+      if (mounted) {
+        final audioFile = File(audioPath);
+        if (await audioFile.exists()) {
+          setState(() {
+            _selectedFiles.add(audioFile);
+            _isTranscribing = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error during transcription: $e');
+      // Fallback: attach audio file
+      if (mounted) {
+        final audioFile = File(audioPath);
+        if (await audioFile.exists()) {
+          setState(() {
+            _selectedFiles.add(audioFile);
+          });
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTranscribing = false;
+        });
+      }
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -699,118 +752,93 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     );
   }
 
-  Widget _buildVoiceInputArea(BuildContext context, AppLocalizations l10n) {
-    if (_currentMode != InputMode.voice && _slideAnimation.value < 0.5) {
-      return const SizedBox.shrink();
-    }
-
-    return Center(
-      // Add this wrapper
-      child: Container(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min, // Add this
-          children: [
-            if (_isTranscribing) ...[
-              // Transcribing animation
-              const SizedBox(
-                width: 60,
-                height: 60,
-                child: CircularProgressIndicator(strokeWidth: 3, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF77E2D7))),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Transcribing audio...',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Theme.of(context).textTheme.bodyLarge?.color),
-              ),
-              const SizedBox(height: 8),
-              Text('This may take a moment', style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6))),
-            ] else ...[
-              // Waveform animation when recording
-              if (_isRecording) SizedBox(height: 80, child: Center(child: _buildWaveform())),
-
-              const SizedBox(height: 24),
-
-              // Recording timer
-              if (_isRecording)
+ Widget _buildVoiceInputArea() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Status text
+          if (_isRecording)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _formatDuration(_recordingSeconds),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.red,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 16),
-
-              const SizedBox(height: 24),
-
-              // Record button
-              GestureDetector(
-                onTap: widget.disabled ? null : _toggleRecording,
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
                     shape: BoxShape.circle,
-                    color: _isRecording ? Colors.red.withOpacity(0.2) : const Color(0xFF77E2D7).withOpacity(0.2),
-                    border: Border.all(color: _isRecording ? Colors.red : const Color(0xFF77E2D7), width: 3),
-                  ),
-                  child: Icon(
-                    _isRecording ? CupertinoIcons.stop_fill : CupertinoIcons.mic_fill,
-                    size: 36,
-                    color: _isRecording ? Colors.red : const Color(0xFF77E2D7),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Instructions
-              Text(
-                _isRecording ? 'Tap to stop Listening' : 'Tap to start Listening',
-                style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7)),
-                textAlign: TextAlign.center,
-              ),
-
-              if (_isRecording)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    'Recording from microphone...',
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.5)),
+                const SizedBox(width: 8),
+                Text(
+                  _formatDuration(_recordingSeconds),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-            ],
-          ],
-        ),
+              ],
+            )
+          else if (_isTranscribing)
+            const Text(
+              'Transcribing...',
+              style: TextStyle(fontSize: 16),
+            )
+          else
+            const Text(
+              'Tap to start recording',
+              style: TextStyle(fontSize: 16),
+            ),
+
+          const SizedBox(height: 24),
+
+          // Record button
+          GestureDetector(
+            onTap: _isTranscribing ? null : _toggleRecording,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isRecording
+                    ? Colors.red.withOpacity(0.2)
+                    : Colors.teal.withOpacity(0.2),
+                border: Border.all(
+                  color: _isRecording ? Colors.red : Colors.teal,
+                  width: 3,
+                ),
+              ),
+              child: Icon(
+                _isRecording ? Icons.stop : Icons.mic,
+                size: 40,
+                color: _isRecording ? Colors.red : Colors.teal,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Cancel button
+          if (_isRecording)
+            TextButton(
+              onPressed: () async {
+                await _voiceService.cancelRecording();
+                _recordingTimer?.cancel();
+                setState(() {
+                  _isRecording = false;
+                  _recordingSeconds = 0;
+                });
+              },
+              child: const Text('Cancel'),
+            ),
+        ],
       ),
     );
-  }
+}
 
-  Widget _buildWaveform() {
+Widget _buildWaveform() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(15, (index) {
@@ -900,4 +928,9 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
       ),
     );
   }
-}
+
+  String _formatDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }

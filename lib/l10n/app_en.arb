@@ -278,5 +278,12 @@
     "send": "Send",
     "more": "More",
     "noMoreData": "No more data",
-    "speak": "Speak"
+    "speak": "Speak",
+    "microphonePermissionDenied": "Microphone permission denied",
+    "recordingStarted": "Recording started",
+    "failedToStartRecording": "Failed to start recording",
+    "transcribing": "Transcribing audio...",
+    "tapToStopListening": "Tap to stop listening",
+    "tapToStartListening": "Tap to start listening",
+    "recordingFromMicrophone": "Recording from microphone..."
 }
