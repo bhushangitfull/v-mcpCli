@@ -34,7 +34,7 @@ dependencies:
     sdk: flutter
   intl: ^0.20.2
   shared_preferences: ^2.2.2
-  http: ^1.2.0
+  http: ^1.1.0
   eventflux: ^2.2.1
   crypto: ^3.0.3
 
@@ -44,7 +44,7 @@ dependencies:
   synchronized: ^3.3.0+3
   provider: ^6.1.2
   logging: ^1.2.0
-  path_provider: ^2.1.5
+  path_provider: ^2.1.0
   path: ^1.9.0
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.2
@@ -82,8 +82,8 @@ dependencies:
   qr_flutter: ^4.1.0  
   mobile_scanner: ^7.0.1  
   dio: ^5.4.0  
-  record: ^5.0.0
-  permission_handler: ^11.0.0
+  record: ^6.2.0 
+  permission_handler: ^12.0.1
 
 
 dev_dependencies:

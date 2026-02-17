@@ -10,22 +10,51 @@ class VoiceService {
   final AudioRecorder _audioRecorder = AudioRecorder();
   String? _currentRecordingPath;
 
+  /// Check if the current platform requires runtime permissions
+  bool get _requiresRuntimePermission {
+    // Desktop platforms (Linux, Windows, macOS) don't require runtime permissions
+    // Mobile platforms (Android, iOS) do require them
+    return Platform.isAndroid || Platform.isIOS;
+  }
+
   /// Request microphone permission
   Future<bool> requestPermission() async {
-    final status = await Permission.microphone.request();
-    return status.isGranted;
+    // Skip permission request on desktop platforms
+    if (!_requiresRuntimePermission) {
+      debugPrint('Desktop platform detected - skipping runtime permission request');
+      return true;
+    }
+    
+    try {
+      final status = await Permission.microphone.request();
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('Error requesting permission: $e');
+      return false;
+    }
   }
 
   /// Check if microphone permission is granted
   Future<bool> hasPermission() async {
-    final status = await Permission.microphone.status;
-    return status.isGranted;
+    // Desktop platforms always have permission (system-level)
+    if (!_requiresRuntimePermission) {
+      debugPrint('Desktop platform detected - permission granted by default');
+      return true;
+    }
+    
+    try {
+      final status = await Permission.microphone.status;
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('Error checking permission: $e');
+      return false;
+    }
   }
 
   /// Start recording audio
   Future<bool> startRecording() async {
     try {
-      // Check permission first
+      // Check permission first (will auto-return true on desktop)
       if (!await hasPermission()) {
         final granted = await requestPermission();
         if (!granted) {
@@ -34,9 +63,9 @@ class VoiceService {
         }
       }
 
-      // Check if recording is supported
+      // Check if recording is supported by the audio recorder
       if (!await _audioRecorder.hasPermission()) {
-        debugPrint('No recording permission');
+        debugPrint('No recording permission from audio recorder');
         return false;
       }
 
@@ -143,7 +172,7 @@ class VoiceService {
   }
 
   /// Check if currently recording
-  Future<bool> isRecording() async {
+  Future<bool> get isRecording async {
     return await _audioRecorder.isRecording();
   }
 

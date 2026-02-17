@@ -64,26 +64,24 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   late Animation<double> _slideAnimation;
 
   // Voice recording state
-  Process? _recordProcess;
-  bool _isRecording = false;
-  String? _currentRecordingPath;
-
-
-  // Transcription state
   final VoiceService _voiceService = VoiceService();
+  bool _isRecording = false;
   bool _isTranscribing = false;
-  bool _whisperAvailable = false;
   Timer? _recordingTimer;
   int _recordingSeconds = 0;
-
 
   @override
   void initState() {
     super.initState();
 
-    _animationController = AnimationController(duration: const Duration(milliseconds: 300), vsync: this);
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
 
-    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
+    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
 
     _focusNode.addListener(() {
       setState(() {
@@ -98,8 +96,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         }
       });
     }
-
-    _checkWhisperAvailability();
   }
 
   @override
@@ -115,100 +111,14 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   }
 
   @override
-
-  Future<void> _checkWhisperAvailability() async {
-    try {
-      final result = await Process.run('which', ['whisper']);
-      setState(() {
-        _whisperAvailable = result.exitCode == 0;
-      });
-      debugPrint('Whisper available: $_whisperAvailable');
-    } catch (e) {
-      debugPrint('Error checking Whisper: $e');
-      setState(() {
-        _whisperAvailable = false;
-      });
-    }
+  void dispose() {
+    _voiceService.dispose();
+    _recordingTimer?.cancel();
+    _animationController.dispose();
+    _focusNode.dispose();
+    textController.dispose();
+    super.dispose();
   }
-
-  Future<void> _attachAudioFile(String audioPath) async {
-    try {
-      final file = File(audioPath);
-      final platformFile = PlatformFile(
-        name: 'voice_recording_${DateTime.now().millisecondsSinceEpoch}.wav',
-        size: await file.length(),
-        path: audioPath,
-      );
-
-      setState(() {
-        _selectedFiles = [..._selectedFiles, platformFile];
-      });
-      widget.onFilesSelected?.call(_selectedFiles);
-
-      _showInfo('Audio recording attached. Install Whisper for auto-transcription.');
-      _toggleMode(InputMode.text);
-    } catch (e) {
-      _showError('Failed to attach audio: ${e.toString()}');
-    }
-  }
-
-  Future<void> _transcribeAudio(String audioPath) async {
-    setState(() {
-      _isTranscribing = true;
-    });
-
-    try {
-      debugPrint('Starting transcription of: $audioPath');
-
-      final tempDir = Directory.systemTemp.createTempSync('whisper_');
-      final outputPath = '${tempDir.path}/transcription';
-
-      final result = await Process.run('whisper', [
-        audioPath,
-        '--model',
-        'base',
-        '--output_format',
-        'txt',
-        '--output_dir',
-        tempDir.path,
-        '--language',
-        'en',
-      ]);
-
-      debugPrint('Whisper exit code: ${result.exitCode}');
-
-      if (result.exitCode == 0) {
-        final transcriptionFile = File('$outputPath.txt');
-        if (await transcriptionFile.exists()) {
-          final transcription = await transcriptionFile.readAsString();
-
-          await tempDir.delete(recursive: true);
-
-          if (transcription.trim().isNotEmpty) {
-            textController.text = transcription.trim();
-            widget.onTextChanged(transcription.trim());
-
-            _showSuccess('Transcription completed!');
-            _toggleMode(InputMode.text);
-          } else {
-            _showError('No speech detected in recording');
-          }
-        } else {
-          _showError('Transcription file not found');
-        }
-      } else {
-        _showError('Transcription failed');
-      }
-    } catch (e) {
-      debugPrint('Error transcribing: $e');
-      _showError('Transcription error: ${e.toString()}');
-    } finally {
-      setState(() {
-        _isTranscribing = false;
-      });
-    }
-  }
-
 
   void _toggleMode(InputMode mode) {
     if (_currentMode == mode) return;
@@ -229,139 +139,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     }
   }
 
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
-  void _showSuccess(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _showInfo(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-
-  void requestFocus() {
-    if (!kIsMobile && mounted) {
-      _focusNode.requestFocus();
-    }
-  }
-
-  Future<void> _pickFiles() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any);
-
-      if (result != null && result.files.isNotEmpty) {
-        setState(() {
-          _selectedFiles = [..._selectedFiles, ...result.files];
-        });
-        widget.onFilesSelected?.call(_selectedFiles);
-      }
-    } catch (e) {
-      debugPrint('Error picking files: $e');
-    }
-  }
-
-  Future<void> _pickImages() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.image);
-
-      if (result != null && result.files.isNotEmpty) {
-        setState(() {
-          _selectedFiles = [..._selectedFiles, ...result.files];
-        });
-        widget.onFilesSelected?.call(_selectedFiles);
-      }
-    } catch (e) {
-      debugPrint('Error picking images: $e');
-    }
-  }
-
-  void _removeFile(int index) {
-    setState(() {
-      _selectedFiles.removeAt(index);
-    });
-    widget.onFilesSelected?.call(_selectedFiles);
-  }
-
-  void _afterSubmitted() {
-    textController.clear();
-    _selectedFiles.clear();
-    _currentRecordingPath = null;
-  }
-
-  String _truncateFileName(String fileName) {
-    const int maxLength = 20;
-    if (fileName.length <= maxLength) return fileName;
-
-    final extension = fileName.contains('.') ? '.${fileName.split('.').last}' : '';
-    final nameWithoutExt = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-
-    if (nameWithoutExt.length <= maxLength - extension.length - 3) {
-      return fileName;
-    }
-
-    final truncatedLength = (maxLength - extension.length - 3) ~/ 2;
-    return '${nameWithoutExt.substring(0, truncatedLength)}'
-        '...'
-        '${nameWithoutExt.substring(nameWithoutExt.length - truncatedLength)}'
-        '$extension';
-  }
-
-  @override
-  void dispose() {
-    _voiceService.dispose();
-    _recordingTimer?.cancel();
-    super.dispose();
-  }
-
   Future<void> _toggleRecording() async {
-    if (_voiceService.isRecording) {
+    if (_isRecording) {
       await _stopRecording();
     } else {
       await _startRecording();
@@ -391,7 +170,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
 
       // Start timer
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (mounted) {
+        if (mounted && _isRecording) {
           setState(() {
             _recordingSeconds++;
           });
@@ -412,7 +191,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     }
   }
 
-   Future<void> _stopRecording() async {
+  Future<void> _stopRecording() async {
     _recordingTimer?.cancel();
     final audioPath = await _voiceService.stopRecording();
 
@@ -437,14 +216,14 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
 
     try {
       // Find OpenAI API key from settings
-      final providers = ProviderManager.settingsProvider?.providers ?? [];
+      final apiSettings = ProviderManager.settingsProvider?.apiSettings ?? [];
       String? openaiApiKey;
       String? baseUrl;
 
-      for (final provider in providers) {
+      for (final provider in apiSettings) {
         if (provider.providerId == 'openai' || provider.apiStyle == 'openai') {
           openaiApiKey = provider.apiKey;
-          baseUrl = provider.baseUrl;
+          baseUrl = provider.apiEndpoint;
           break;
         }
       }
@@ -458,10 +237,13 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
 
         if (transcription != null && transcription.isNotEmpty) {
           // Insert transcription into text field
-          setState(() {
-            textController.text = transcription;
-            _isTranscribing = false;
-          });
+          if (mounted) {
+            setState(() {
+              textController.text = transcription;
+              _isTranscribing = false;
+            });
+            widget.onTextChanged(transcription);
+          }
           return;
         }
       }
@@ -470,21 +252,39 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
       if (mounted) {
         final audioFile = File(audioPath);
         if (await audioFile.exists()) {
+          final platformFile = PlatformFile(
+            name: 'voice_recording_${DateTime.now().millisecondsSinceEpoch}.m4a',
+            size: await audioFile.length(),
+            path: audioPath,
+          );
+          
           setState(() {
-            _selectedFiles.add(audioFile);
+            _selectedFiles.add(platformFile);
             _isTranscribing = false;
           });
+          widget.onFilesSelected?.call(_selectedFiles);
         }
       }
     } catch (e) {
       debugPrint('Error during transcription: $e');
       // Fallback: attach audio file
       if (mounted) {
-        final audioFile = File(audioPath);
-        if (await audioFile.exists()) {
-          setState(() {
-            _selectedFiles.add(audioFile);
-          });
+        try {
+          final audioFile = File(audioPath);
+          if (await audioFile.exists()) {
+            final platformFile = PlatformFile(
+              name: 'voice_recording_${DateTime.now().millisecondsSinceEpoch}.m4a',
+              size: await audioFile.length(),
+              path: audioPath,
+            );
+            
+            setState(() {
+              _selectedFiles.add(platformFile);
+            });
+            widget.onFilesSelected?.call(_selectedFiles);
+          }
+        } catch (fileError) {
+          debugPrint('Error attaching audio file: $fileError');
         }
       }
     } finally {
@@ -496,7 +296,85 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     }
   }
 
+  String _formatDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
 
+  void requestFocus() {
+    if (!kIsMobile && mounted) {
+      _focusNode.requestFocus();
+    }
+  }
+
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _selectedFiles = [..._selectedFiles, ...result.files];
+        });
+        widget.onFilesSelected?.call(_selectedFiles);
+      }
+    } catch (e) {
+      debugPrint('Error picking files: $e');
+    }
+  }
+
+  Future<void> _pickImages() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.image,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _selectedFiles = [..._selectedFiles, ...result.files];
+        });
+        widget.onFilesSelected?.call(_selectedFiles);
+      }
+    } catch (e) {
+      debugPrint('Error picking images: $e');
+    }
+  }
+
+  void _removeFile(int index) {
+    setState(() {
+      _selectedFiles.removeAt(index);
+    });
+    widget.onFilesSelected?.call(_selectedFiles);
+  }
+
+  void _afterSubmitted() {
+    textController.clear();
+    _selectedFiles.clear();
+  }
+
+  String _truncateFileName(String fileName) {
+    const int maxLength = 20;
+    if (fileName.length <= maxLength) return fileName;
+
+    final extension = fileName.contains('.') ? '.${fileName.split('.').last}' : '';
+    final nameWithoutExt = fileName.contains('.')
+        ? fileName.substring(0, fileName.lastIndexOf('.'))
+        : fileName;
+
+    if (nameWithoutExt.length <= maxLength - extension.length - 3) {
+      return fileName;
+    }
+
+    final truncatedLength = (maxLength - extension.length - 3) ~/ 2;
+    return '${nameWithoutExt.substring(0, truncatedLength)}'
+        '...'
+        '${nameWithoutExt.substring(nameWithoutExt.length - truncatedLength)}'
+        '$extension';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -541,7 +419,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               ],
             ),
           ),
-
           AnimatedBuilder(
             animation: _slideAnimation,
             builder: (context, child) {
@@ -549,24 +426,34 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                 children: [
                   Opacity(
                     opacity: 1.0 - _slideAnimation.value,
-                    child: Transform.translate(offset: Offset(-50 * _slideAnimation.value, 0), child: _buildTextInputArea(context, l10n)),
+                    child: Transform.translate(
+                      offset: Offset(-50 * _slideAnimation.value, 0),
+                      child: _buildTextInputArea(context, l10n),
+                    ),
                   ),
                   Opacity(
                     opacity: _slideAnimation.value,
-                    child: Transform.translate(offset: Offset(50 * (1.0 - _slideAnimation.value), 0), child: _buildVoiceInputArea(context, l10n)),
+                    child: Transform.translate(
+                      offset: Offset(50 * (1.0 - _slideAnimation.value), 0),
+                      child: _buildVoiceInputArea(),
+                    ),
                   ),
                 ],
               );
             },
           ),
-
           if (_currentMode == InputMode.text) _buildTextActionButtons(context, l10n),
         ],
       ),
     );
   }
 
-  Widget _buildModeTab({required String label, required IconData icon, required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildModeTab({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -575,14 +462,25 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF77E2D7).withOpacity(0.15) : Colors.transparent,
+            color: isSelected
+                ? const Color(0xFF77E2D7).withOpacity(0.15)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isSelected ? const Color(0xFF77E2D7) : Colors.transparent, width: 1.5),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF77E2D7) : Colors.transparent,
+              width: 1.5,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: isSelected ? const Color(0xFF77E2D7) : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5)),
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected
+                    ? const Color(0xFF77E2D7)
+                    : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+              ),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -590,7 +488,9 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                   fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   letterSpacing: 0.5,
-                  color: isSelected ? const Color(0xFF77E2D7) : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                  color: isSelected
+                      ? const Color(0xFF77E2D7)
+                      : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
                 ),
               ),
             ],
@@ -620,14 +520,12 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                 children: _selectedFiles.asMap().entries.map((entry) {
                   final index = entry.key;
                   final file = entry.value;
-                  final isImage =
-                      file.extension?.toLowerCase() == 'jpg' ||
+                  final isImage = file.extension?.toLowerCase() == 'jpg' ||
                       file.extension?.toLowerCase() == 'jpeg' ||
                       file.extension?.toLowerCase() == 'png' ||
                       file.extension?.toLowerCase() == 'gif';
 
-                  final isAudio =
-                      file.extension?.toLowerCase() == 'm4a' ||
+                  final isAudio = file.extension?.toLowerCase() == 'm4a' ||
                       file.extension?.toLowerCase() == 'mp3' ||
                       file.extension?.toLowerCase() == 'wav' ||
                       file.extension?.toLowerCase() == 'ogg' ||
@@ -640,27 +538,36 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                       decoration: BoxDecoration(
                         color: AppColors.getInputAreaFileItemBackgroundColor(context),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.getInputAreaBorderColor(context), width: 1),
+                        border: Border.all(
+                          color: AppColors.getInputAreaBorderColor(context),
+                          width: 1,
+                        ),
                       ),
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                              vertical: 6.0,
+                            ),
                             child: Row(
                               children: [
                                 Icon(
                                   isImage
                                       ? Icons.image
                                       : isAudio
-                                      ? Icons.mic
-                                      : Icons.insert_drive_file,
+                                          ? Icons.mic
+                                          : Icons.insert_drive_file,
                                   size: 16,
                                   color: AppColors.getInputAreaFileIconColor(context),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   _truncateFileName(file.name),
-                                  style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodyMedium?.color),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
@@ -670,10 +577,20 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                             color: Colors.transparent,
                             child: InkWell(
                               onTap: () => _removeFile(index),
-                              borderRadius: const BorderRadius.only(topRight: Radius.circular(8), bottomRight: Radius.circular(8)),
+                              borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(8),
+                                bottomRight: Radius.circular(8),
+                              ),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 6.0),
-                                child: Icon(Icons.close, size: 14, color: AppColors.getInputAreaIconColor(context)),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6.0,
+                                  vertical: 6.0,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: AppColors.getInputAreaIconColor(context),
+                                ),
                               ),
                             ),
                           ),
@@ -688,10 +605,13 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
           child: Container(
-            decoration: BoxDecoration(color: AppColors.getInputAreaBackgroundColor(context)),
+            decoration: BoxDecoration(
+              color: AppColors.getInputAreaBackgroundColor(context),
+            ),
             child: Focus(
               onKeyEvent: (node, event) {
-                if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+                if (event is KeyDownEvent &&
+                    event.logicalKey == LogicalKeyboardKey.enter) {
                   if (HardwareKeyboard.instance.isShiftPressed) {
                     return KeyEventResult.ignored;
                   }
@@ -730,16 +650,25 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                   }),
                 ],
                 keyboardType: TextInputType.multiline,
-                style: TextStyle(fontSize: 14.0, color: AppColors.getInputAreaTextColor(context)),
+                style: TextStyle(
+                  fontSize: 14.0,
+                  color: AppColors.getInputAreaTextColor(context),
+                ),
                 scrollPhysics: const BouncingScrollPhysics(),
                 decoration: InputDecoration(
                   hintText: l10n.askMeAnything,
-                  hintStyle: TextStyle(fontSize: 14.0, color: AppColors.getInputAreaHintTextColor(context)),
+                  hintStyle: TextStyle(
+                    fontSize: 14.0,
+                    color: AppColors.getInputAreaHintTextColor(context),
+                  ),
                   filled: true,
                   fillColor: AppColors.getInputAreaBackgroundColor(context),
                   hoverColor: Colors.transparent,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 0,
+                    vertical: 10,
+                  ),
                   isDense: true,
                 ),
                 cursorColor: AppColors.getInputAreaCursorColor(context),
@@ -752,7 +681,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     );
   }
 
- Widget _buildVoiceInputArea() {
+  Widget _buildVoiceInputArea() {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -791,9 +720,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               'Tap to start recording',
               style: TextStyle(fontSize: 16),
             ),
-
           const SizedBox(height: 24),
-
           // Record button
           GestureDetector(
             onTap: _isTranscribing ? null : _toggleRecording,
@@ -817,9 +744,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               ),
             ),
           ),
-
           const SizedBox(height: 16),
-
           // Cancel button
           if (_isRecording)
             TextButton(
@@ -835,33 +760,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
             ),
         ],
       ),
-    );
-}
-
-Widget _buildWaveform() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(15, (index) {
-        return TweenAnimationBuilder<double>(
-          duration: Duration(milliseconds: 300 + (index * 100)),
-          tween: Tween(begin: 10.0, end: 30.0 + (index % 4) * 10.0),
-          builder: (context, value, child) {
-            return AnimatedContainer(
-              duration: Duration(milliseconds: 300 + (index * 50)),
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              width: 4,
-              height: value,
-              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2)),
-            );
-          },
-          onEnd: () {
-            // Loop the animation
-            if (mounted && _isRecording) {
-              setState(() {});
-            }
-          },
-        );
-      }),
     );
   }
 
@@ -882,7 +780,11 @@ Widget _buildWaveform() {
                 ),
                 const SizedBox(width: 10),
                 if (kIsMobile) ...[
-                  UploadMenu(disabled: widget.disabled, onPickImages: _pickImages, onPickFiles: _pickFiles),
+                  UploadMenu(
+                    disabled: widget.disabled,
+                    onPickImages: _pickImages,
+                    onPickFiles: _pickFiles,
+                  ),
                 ] else ...[
                   InkIcon(
                     icon: CupertinoIcons.plus_app,
@@ -928,9 +830,4 @@ Widget _buildWaveform() {
       ),
     );
   }
-
-  String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-  }
+}
