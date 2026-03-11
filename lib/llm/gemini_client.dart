@@ -163,10 +163,10 @@ List<Map<String, dynamic>> chatMessageToGeminiMessage(List<ChatMessage> messages
       }
     }
 
-    // 确保至少有一个part
+  
     if (parts.isEmpty) {
       parts.add({
-        'text': ' ', // 添加一个空格作为默认文本
+        'text': ' ', 
       });
     }
 

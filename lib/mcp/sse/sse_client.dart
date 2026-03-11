@@ -10,7 +10,6 @@ import 'package:logging/logging.dart';
 import 'dart:convert';
 import 'dart:async';
 
-// 连接状态枚举
 enum ConnectionState { disconnected, connecting, waitingForEndpoint, connected, reconnecting }
 
 class SSEClient implements McpClient {
@@ -29,7 +28,7 @@ class SSEClient implements McpClient {
   bool _disposed = false;
   static const int _maxReconnectAttempts = 5;
   static const Duration _initialReconnectDelay = Duration(seconds: 1);
-  static const Duration _endpointTimeout = Duration(seconds: 10);
+  static const Duration _endpointTimeout = Duration(seconds: 60);
   Timer? _endpointTimer;
 
   ConnectionState _connectionState = ConnectionState.disconnected;
@@ -99,7 +98,7 @@ class SSEClient implements McpClient {
       Logger.root.info('建立SSE连接到: $connectionUrl');
       _connectionState = ConnectionState.waitingForEndpoint;
 
-      // 设置endpoint超时定时器
+  
       _endpointTimer = Timer(_endpointTimeout, () {
         if (!_endpointConfirmedCompleter.isCompleted) {
           _endpointConfirmedCompleter.completeError('Endpoint confirmation timeout');

@@ -12,7 +12,7 @@ class OpenAIClient extends BaseLLMClient {
   final Map<String, String> _headers;
 
   OpenAIClient({required this.apiKey, String? baseUrl})
-    : baseUrl = (baseUrl == null || baseUrl.isEmpty) ? 'https://api.openai.com/v1' : baseUrl,
+    : baseUrl = (baseUrl == null || baseUrl.isEmpty) ? 'https://platform.openai.com/api-keys' : baseUrl,
       _headers = {'Content-Type': 'application/json; charset=utf-8', 'Authorization': 'Bearer $apiKey'};
 
   @override
@@ -20,6 +20,13 @@ class OpenAIClient extends BaseLLMClient {
     final httpClient = BaseLLMClient.createHttpClient();
 
     final body = {'model': request.model, 'messages': chatMessageToOpenAIMessage(request.messages)};
+
+    // Check API key presence early to provide a clearer error than an upstream 401
+    if (apiKey.isEmpty) {
+      final endpoint = getEndpoint(baseUrl, "/chat/completions");
+      final bodyStr = jsonEncode(body);
+      throw await handleError(Exception('API key not set'), 'OpenAI', endpoint, bodyStr);
+    }
 
     addModelSettingsToBody(body, request.modelSetting);
 
@@ -31,7 +38,7 @@ class OpenAIClient extends BaseLLMClient {
     final bodyStr = jsonEncode(body);
     Logger.root.fine('OpenAI request: $bodyStr');
 
-    final endpoint = getEndpoint(baseUrl, "/chat/completions");
+  final endpoint = getEndpoint(baseUrl, "/chat/completions");
 
     try {
       final response = await httpClient.post(Uri.parse(endpoint), headers: _headers, body: bodyStr);
@@ -74,6 +81,13 @@ class OpenAIClient extends BaseLLMClient {
     final httpClient = BaseLLMClient.createHttpClient();
 
     final body = {'model': request.model, 'messages': chatMessageToOpenAIMessage(request.messages), 'stream': true};
+
+    // Check API key presence early to provide a clearer error than an upstream 401
+    if (apiKey.isEmpty) {
+      final endpoint = getEndpoint(baseUrl, "/chat/completions");
+      final bodyStr = jsonEncode(body);
+      throw await handleError(Exception('API key not set'), 'OpenAI', endpoint, bodyStr);
+    }
 
     addModelSettingsToBody(body, request.modelSetting);
 
