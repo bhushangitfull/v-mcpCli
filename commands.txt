@@ -1,0 +1,4 @@
+sudo apt-get install libgtk-3-dev libx11-dev pkg-config cmake ninja-build clang
+
+echo 'export CMAKE_INSTALL_PREFIX=/tmp/chatmcp' >> ~/.bashrc
+source ~/.bashrc

@@ -201,4 +201,14 @@ except Exception as e:
       debugPrint('[VoiceService] _cleanupFile error: $e');
     }
   }
+
+  /// Disposes the voice service and releases resources.
+  void dispose() {
+    try {
+      _recorder.dispose();
+      debugPrint('[VoiceService] Disposed');
+    } catch (e) {
+      debugPrint('[VoiceService] dispose error: $e');
+    }
+  }
 }
