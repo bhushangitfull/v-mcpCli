@@ -14,7 +14,6 @@ import 'dart:io';
 import 'dart:async';
 import 'package:chatmcp/services/voice_service.dart';
 
-
 class SubmitData {
   final String text;
   final List<PlatformFile> files;
@@ -53,7 +52,8 @@ class InputArea extends StatefulWidget {
   State<InputArea> createState() => InputAreaState();
 }
 
-class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixin {
+class InputAreaState extends State<InputArea>
+    with SingleTickerProviderStateMixin {
   List<PlatformFile> _selectedFiles = [];
   final TextEditingController textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
@@ -63,7 +63,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   late AnimationController _animationController;
   late Animation<double> _slideAnimation;
 
-  // Voice recording state
+  // Voice state — powered by VoiceService only
   final VoiceService _voiceService = VoiceService();
   bool _isRecording = false;
   bool _isTranscribing = false;
@@ -80,7 +80,10 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     );
 
     _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
     );
 
     _focusNode.addListener(() {
@@ -91,9 +94,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
 
     if (!kIsMobile && widget.autoFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _focusNode.requestFocus();
-        }
+        if (mounted) _focusNode.requestFocus();
       });
     }
   }
@@ -103,9 +104,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     super.didUpdateWidget(oldWidget);
     if (!kIsMobile && widget.autoFocus && !oldWidget.autoFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _focusNode.requestFocus();
-        }
+        if (mounted) _focusNode.requestFocus();
       });
     }
   }
@@ -120,12 +119,14 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     super.dispose();
   }
 
+  // ─── Mode switching ───────────────────────────────────────────────────────
+
   void _toggleMode(InputMode mode) {
     if (_currentMode == mode) return;
 
-    // Stop recording if switching away from voice mode
+    // Stop any active recording when leaving voice mode
     if (_currentMode == InputMode.voice && _isRecording) {
-      _stopRecording();
+      _cancelRecording();
     }
 
     setState(() {
@@ -134,10 +135,16 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
 
     if (mode == InputMode.text) {
       _animationController.reverse();
+      // Restore focus to text field
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !kIsMobile) _focusNode.requestFocus();
+      });
     } else {
       _animationController.forward();
     }
   }
+
+  // ─── Recording ───────────────────────────────────────────────────────────
 
   Future<void> _toggleRecording() async {
     if (_isRecording) {
@@ -148,13 +155,17 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
   }
 
   Future<void> _startRecording() async {
+    // Check permission
     final hasPermission = await _voiceService.hasPermission();
     if (!hasPermission) {
       final granted = await _voiceService.requestPermission();
       if (!granted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission denied')),
+            const SnackBar(
+              content: Text('Microphone permission denied'),
+              duration: Duration(seconds: 3),
+            ),
           );
         }
         return;
@@ -162,37 +173,35 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     }
 
     final started = await _voiceService.startRecording();
-    if (started) {
-      setState(() {
-        _isRecording = true;
-        _recordingSeconds = 0;
-      });
-
-      // Start timer
-      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (mounted && _isRecording) {
-          setState(() {
-            _recordingSeconds++;
-          });
-        }
-      });
-
+    if (!started) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recording started')),
+          const SnackBar(
+            content: Text('Failed to start recording. Check microphone.'),
+            duration: Duration(seconds: 3),
+          ),
         );
       }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to start recording')),
-        );
-      }
+      return;
     }
+
+    setState(() {
+      _isRecording = true;
+      _recordingSeconds = 0;
+    });
+
+    // Tick every second to show recording duration
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted && _isRecording) {
+        setState(() => _recordingSeconds++);
+      }
+    });
   }
 
   Future<void> _stopRecording() async {
     _recordingTimer?.cancel();
+    _recordingTimer = null;
+
     final audioPath = await _voiceService.stopRecording();
 
     setState(() {
@@ -203,97 +212,75 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     if (audioPath == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to stop recording')),
+          const SnackBar(
+            content: Text('Failed to save recording'),
+            duration: Duration(seconds: 3),
+          ),
         );
       }
       return;
     }
 
-    // Try to transcribe with Whisper API
-    setState(() {
-      _isTranscribing = true;
-    });
+    // ── Transcribe using local Whisper ──────────────────────────────────────
+    setState(() => _isTranscribing = true);
 
     try {
-      // Find OpenAI API key from settings
-      final apiSettings = ProviderManager.settingsProvider?.apiSettings ?? [];
-      String? openaiApiKey;
-      String? baseUrl;
+      final transcription = await _voiceService.transcribeLocally(
+        audioPath,
+        model: 'base',  // change to 'small' for better accuracy
+        language: 'en', // change to your language if needed e.g. 'hi', 'fr'
+      );
 
-      for (final provider in apiSettings) {
-        if (provider.providerId == 'openai' || provider.apiStyle == 'openai') {
-          openaiApiKey = provider.apiKey;
-          baseUrl = provider.apiEndpoint;
-          break;
-        }
-      }
+      if (!mounted) return;
 
-      if (openaiApiKey != null && openaiApiKey.isNotEmpty) {
-        final transcription = await _voiceService.transcribeWithWhisper(
-          audioPath,
-          openaiApiKey,
-          baseUrl: baseUrl ?? 'https://api.openai.com/v1',
-        );
-
-        if (transcription != null && transcription.isNotEmpty) {
-          // Insert transcription into text field
-          if (mounted) {
-            setState(() {
-              textController.text = transcription;
-              _isTranscribing = false;
-            });
-            widget.onTextChanged(transcription);
-          }
-          return;
-        }
-      }
-
-      // Fallback: attach audio file if transcription failed or no API key
-      if (mounted) {
-        final audioFile = File(audioPath);
-        if (await audioFile.exists()) {
-          final platformFile = PlatformFile(
-            name: 'voice_recording_${DateTime.now().millisecondsSinceEpoch}.m4a',
-            size: await audioFile.length(),
-            path: audioPath,
-          );
-          
-          setState(() {
-            _selectedFiles.add(platformFile);
-            _isTranscribing = false;
-          });
-          widget.onFilesSelected?.call(_selectedFiles);
-        }
-      }
-    } catch (e) {
-      debugPrint('Error during transcription: $e');
-      // Fallback: attach audio file
-      if (mounted) {
-        try {
-          final audioFile = File(audioPath);
-          if (await audioFile.exists()) {
-            final platformFile = PlatformFile(
-              name: 'voice_recording_${DateTime.now().millisecondsSinceEpoch}.m4a',
-              size: await audioFile.length(),
-              path: audioPath,
-            );
-            
-            setState(() {
-              _selectedFiles.add(platformFile);
-            });
-            widget.onFilesSelected?.call(_selectedFiles);
-          }
-        } catch (fileError) {
-          debugPrint('Error attaching audio file: $fileError');
-        }
-      }
-    } finally {
-      if (mounted) {
+      if (transcription != null && transcription.isNotEmpty) {
+        // Put transcript into text field
         setState(() {
+          textController.text = transcription;
           _isTranscribing = false;
         });
+
+        widget.onTextChanged(transcription);
+
+        // Switch back to text mode so user can review before sending
+        _toggleMode(InputMode.text);
+
+        // ── To auto-submit without review, uncomment these two lines: ──
+        // widget.onSubmitted(SubmitData(transcription, _selectedFiles));
+        // _afterSubmitted();
+      } else {
+        setState(() => _isTranscribing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not transcribe. Make sure Whisper is installed correctly.',
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[InputArea] Transcription error: $e');
+      if (mounted) {
+        setState(() => _isTranscribing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Transcription error: $e'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     }
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    await _voiceService.cancelRecording();
+    setState(() {
+      _isRecording = false;
+      _recordingSeconds = 0;
+    });
   }
 
   String _formatDuration(int seconds) {
@@ -302,11 +289,13 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
+  // ─── Focus ────────────────────────────────────────────────────────────────
+
   void requestFocus() {
-    if (!kIsMobile && mounted) {
-      _focusNode.requestFocus();
-    }
+    if (!kIsMobile && mounted) _focusNode.requestFocus();
   }
+
+  // ─── File picking ─────────────────────────────────────────────────────────
 
   Future<void> _pickFiles() async {
     try {
@@ -314,7 +303,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         allowMultiple: true,
         type: FileType.any,
       );
-
       if (result != null && result.files.isNotEmpty) {
         setState(() {
           _selectedFiles = [..._selectedFiles, ...result.files];
@@ -332,7 +320,6 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         allowMultiple: true,
         type: FileType.image,
       );
-
       if (result != null && result.files.isNotEmpty) {
         setState(() {
           _selectedFiles = [..._selectedFiles, ...result.files];
@@ -360,7 +347,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     const int maxLength = 20;
     if (fileName.length <= maxLength) return fileName;
 
-    final extension = fileName.contains('.') ? '.${fileName.split('.').last}' : '';
+    final extension =
+        fileName.contains('.') ? '.${fileName.split('.').last}' : '';
     final nameWithoutExt = fileName.contains('.')
         ? fileName.substring(0, fileName.lastIndexOf('.'))
         : fileName;
@@ -376,6 +364,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         '$extension';
   }
 
+  // ─── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -387,16 +377,20 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
           color: _isTextFieldFocused && _currentMode == InputMode.text
               ? const Color(0xFF77E2D7)
               : AppColors.getInputAreaBorderColor(context).withOpacity(0.3),
-          width: _isTextFieldFocused && _currentMode == InputMode.text ? 2.5 : 1.5,
+          width:
+              _isTextFieldFocused && _currentMode == InputMode.text ? 2.5 : 1.5,
         ),
       ),
-      margin: const EdgeInsets.only(left: 12.0, right: 12.0, top: 2.0, bottom: 8.0),
+      margin: const EdgeInsets.only(
+          left: 12.0, right: 12.0, top: 2.0, bottom: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ── Mode tabs ──────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 12.0, bottom: 8.0),
+            padding: const EdgeInsets.only(
+                left: 16.0, right: 16.0, top: 12.0, bottom: 8.0),
             child: Row(
               children: [
                 Expanded(
@@ -419,11 +413,14 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               ],
             ),
           ),
+
+          // ── Animated content area ──────────────────────────────────────
           AnimatedBuilder(
             animation: _slideAnimation,
             builder: (context, child) {
               return Stack(
                 children: [
+                  // Text input (slides out left)
                   Opacity(
                     opacity: 1.0 - _slideAnimation.value,
                     child: Transform.translate(
@@ -431,6 +428,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                       child: _buildTextInputArea(context, l10n),
                     ),
                   ),
+                  // Voice input (slides in from right)
                   Opacity(
                     opacity: _slideAnimation.value,
                     child: Transform.translate(
@@ -442,11 +440,16 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               );
             },
           ),
-          if (_currentMode == InputMode.text) _buildTextActionButtons(context, l10n),
+
+          // ── Action buttons (text mode only) ───────────────────────────
+          if (_currentMode == InputMode.text)
+            _buildTextActionButtons(context, l10n),
         ],
       ),
     );
   }
+
+  // ─── Mode tab widget ──────────────────────────────────────────────────────
 
   Widget _buildModeTab({
     required String label,
@@ -460,14 +463,17 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
         onTap: widget.disabled ? null : onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          padding:
+              const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
             color: isSelected
                 ? const Color(0xFF77E2D7).withOpacity(0.15)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? const Color(0xFF77E2D7) : Colors.transparent,
+              color: isSelected
+                  ? const Color(0xFF77E2D7)
+                  : Colors.transparent,
               width: 1.5,
             ),
           ),
@@ -479,18 +485,27 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                 size: 16,
                 color: isSelected
                     ? const Color(0xFF77E2D7)
-                    : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                    : Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.color
+                        ?.withOpacity(0.5),
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.w500,
                   letterSpacing: 0.5,
                   color: isSelected
                       ? const Color(0xFF77E2D7)
-                      : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                      : Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.color
+                          ?.withOpacity(0.5),
                 ),
               ),
             ],
@@ -500,6 +515,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     );
   }
 
+  // ─── Text input area ──────────────────────────────────────────────────────
+
   Widget _buildTextInputArea(BuildContext context, AppLocalizations l10n) {
     if (_currentMode != InputMode.text && _slideAnimation.value > 0.5) {
       return const SizedBox.shrink();
@@ -507,9 +524,11 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
 
     return Column(
       children: [
+        // Selected files preview
         if (_selectedFiles.isNotEmpty)
           Container(
-            padding: const EdgeInsets.only(left: 12.0, right: 12.0, top: 8.0),
+            padding:
+                const EdgeInsets.only(left: 12.0, right: 12.0, top: 8.0),
             constraints: const BoxConstraints(maxHeight: 65),
             width: double.infinity,
             child: SingleChildScrollView(
@@ -520,26 +539,22 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                 children: _selectedFiles.asMap().entries.map((entry) {
                   final index = entry.key;
                   final file = entry.value;
-                  final isImage = file.extension?.toLowerCase() == 'jpg' ||
-                      file.extension?.toLowerCase() == 'jpeg' ||
-                      file.extension?.toLowerCase() == 'png' ||
-                      file.extension?.toLowerCase() == 'gif';
-
-                  final isAudio = file.extension?.toLowerCase() == 'm4a' ||
-                      file.extension?.toLowerCase() == 'mp3' ||
-                      file.extension?.toLowerCase() == 'wav' ||
-                      file.extension?.toLowerCase() == 'ogg' ||
-                      file.extension?.toLowerCase() == 'flac' ||
+                  final isImage = ['jpg', 'jpeg', 'png', 'gif']
+                      .contains(file.extension?.toLowerCase());
+                  final isAudio = ['m4a', 'mp3', 'wav', 'ogg', 'flac']
+                          .contains(file.extension?.toLowerCase()) ||
                       file.name.startsWith('voice_recording');
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: AppColors.getInputAreaFileItemBackgroundColor(context),
+                        color: AppColors
+                            .getInputAreaFileItemBackgroundColor(context),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: AppColors.getInputAreaBorderColor(context),
+                          color:
+                              AppColors.getInputAreaBorderColor(context),
                           width: 1,
                         ),
                       ),
@@ -559,14 +574,18 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                                           ? Icons.mic
                                           : Icons.insert_drive_file,
                                   size: 16,
-                                  color: AppColors.getInputAreaFileIconColor(context),
+                                  color: AppColors
+                                      .getInputAreaFileIconColor(context),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   _truncateFileName(file.name),
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.color,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -589,7 +608,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                                 child: Icon(
                                   Icons.close,
                                   size: 14,
-                                  color: AppColors.getInputAreaIconColor(context),
+                                  color: AppColors
+                                      .getInputAreaIconColor(context),
                                 ),
                               ),
                             ),
@@ -602,8 +622,11 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
               ),
             ),
           ),
+
+        // Text field
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 12.0, vertical: 6.0),
           child: Container(
             decoration: BoxDecoration(
               color: AppColors.getInputAreaBackgroundColor(context),
@@ -615,13 +638,13 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                   if (HardwareKeyboard.instance.isShiftPressed) {
                     return KeyEventResult.ignored;
                   }
-
                   if (_isImeComposing) {
                     return KeyEventResult.ignored;
                   }
-
-                  if (widget.isComposing && textController.text.trim().isNotEmpty) {
-                    widget.onSubmitted(SubmitData(textController.text, _selectedFiles));
+                  if (widget.isComposing &&
+                      textController.text.trim().isNotEmpty) {
+                    widget.onSubmitted(
+                        SubmitData(textController.text, _selectedFiles));
                     _afterSubmitted();
                   }
                   return KeyEventResult.handled;
@@ -635,17 +658,19 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                 onChanged: widget.onTextChanged,
                 maxLines: 5,
                 minLines: 1,
-                onAppPrivateCommand: (value, map) {
-                  debugPrint('onAppPrivateCommand: $value');
-                },
-                buildCounter: (context, {required currentLength, required isFocused, maxLength}) {
-                  return null;
-                },
-                textInputAction: kIsMobile ? TextInputAction.newline : TextInputAction.done,
+                buildCounter: (context,
+                        {required currentLength,
+                        required isFocused,
+                        maxLength}) =>
+                    null,
+                textInputAction: kIsMobile
+                    ? TextInputAction.newline
+                    : TextInputAction.done,
                 onSubmitted: null,
                 inputFormatters: [
                   TextInputFormatter.withFunction((oldValue, newValue) {
-                    _isImeComposing = newValue.composing != TextRange.empty;
+                    _isImeComposing =
+                        newValue.composing != TextRange.empty;
                     return newValue;
                   }),
                 ],
@@ -662,7 +687,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
                     color: AppColors.getInputAreaHintTextColor(context),
                   ),
                   filled: true,
-                  fillColor: AppColors.getInputAreaBackgroundColor(context),
+                  fillColor:
+                      AppColors.getInputAreaBackgroundColor(context),
                   hoverColor: Colors.transparent,
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
@@ -681,91 +707,152 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
     );
   }
 
+  // ─── Voice input area ─────────────────────────────────────────────────────
+
   Widget _buildVoiceInputArea() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Status text
-          if (_isRecording)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _formatDuration(_recordingSeconds),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            )
-          else if (_isTranscribing)
-            const Text(
-              'Transcribing...',
-              style: TextStyle(fontSize: 16),
-            )
-          else
-            const Text(
-              'Tap to start recording',
-              style: TextStyle(fontSize: 16),
-            ),
+          // Status label
+          _buildVoiceStatusLabel(),
           const SizedBox(height: 24),
+
           // Record button
           GestureDetector(
-            onTap: _isTranscribing ? null : _toggleRecording,
-            child: Container(
+            onTap: widget.disabled || _isTranscribing
+                ? null
+                : _toggleRecording,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               width: 80,
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _isRecording
-                    ? Colors.red.withOpacity(0.2)
-                    : Colors.teal.withOpacity(0.2),
+                    ? Colors.red.withOpacity(0.15)
+                    : _isTranscribing
+                        ? Colors.orange.withOpacity(0.15)
+                        : const Color(0xFF77E2D7).withOpacity(0.15),
                 border: Border.all(
-                  color: _isRecording ? Colors.red : Colors.teal,
+                  color: _isRecording
+                      ? Colors.red
+                      : _isTranscribing
+                          ? Colors.orange
+                          : const Color(0xFF77E2D7),
                   width: 3,
                 ),
               ),
-              child: Icon(
-                _isRecording ? Icons.stop : Icons.mic,
-                size: 40,
-                color: _isRecording ? Colors.red : Colors.teal,
-              ),
+              child: _isTranscribing
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.orange,
+                      ),
+                    )
+                  : Icon(
+                      _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+                      size: 36,
+                      color: _isRecording
+                          ? Colors.red
+                          : const Color(0xFF77E2D7),
+                    ),
             ),
           ),
           const SizedBox(height: 16),
-          // Cancel button
+
+          // Cancel button (only while recording)
           if (_isRecording)
-            TextButton(
-              onPressed: () async {
-                await _voiceService.cancelRecording();
-                _recordingTimer?.cancel();
-                setState(() {
-                  _isRecording = false;
-                  _recordingSeconds = 0;
-                });
-              },
-              child: const Text('Cancel'),
+            TextButton.icon(
+              onPressed: _cancelRecording,
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Cancel'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red.withOpacity(0.8),
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildTextActionButtons(BuildContext context, AppLocalizations l10n) {
+  Widget _buildVoiceStatusLabel() {
+    if (_isTranscribing) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Transcribing...',
+            style: TextStyle(
+              fontSize: 15,
+              color: Theme.of(context).textTheme.bodyMedium?.color,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_isRecording) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Blinking red dot
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.4, end: 1.0),
+            duration: const Duration(milliseconds: 600),
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _formatDuration(_recordingSeconds),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      'Tap to start recording',
+      style: TextStyle(
+        fontSize: 15,
+        color: Theme.of(context)
+            .textTheme
+            .bodyMedium
+            ?.color
+            ?.withOpacity(0.6),
+      ),
+    );
+  }
+
+  // ─── Text mode action buttons ─────────────────────────────────────────────
+
+  Widget _buildTextActionButtons(
+      BuildContext context, AppLocalizations l10n) {
     return Padding(
-      padding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 10.0, top: 4.0),
+      padding: const EdgeInsets.only(
+          left: 12.0, right: 12.0, bottom: 10.0, top: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -773,7 +860,8 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
             Row(
               children: [
                 FutureBuilder<int>(
-                  future: ProviderManager.mcpServerProvider.installedServersCount,
+                  future:
+                      ProviderManager.mcpServerProvider.installedServersCount,
                   builder: (context, snapshot) {
                     return const McpTools();
                   },
@@ -806,10 +894,12 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
             InkIcon(
               icon: CupertinoIcons.arrow_up_circle,
               onTap: () {
-                if (widget.disabled || textController.text.trim().isEmpty) {
+                if (widget.disabled ||
+                    textController.text.trim().isEmpty) {
                   return;
                 }
-                widget.onSubmitted(SubmitData(textController.text, _selectedFiles));
+                widget.onSubmitted(
+                    SubmitData(textController.text, _selectedFiles));
                 _afterSubmitted();
               },
               tooltip: l10n.send,
@@ -819,9 +909,7 @@ class InputAreaState extends State<InputArea> with SingleTickerProviderStateMixi
             InkIcon(
               icon: CupertinoIcons.stop,
               onTap: widget.onCancel != null
-                  ? () {
-                      widget.onCancel!();
-                    }
+                  ? () => widget.onCancel!()
                   : null,
               tooltip: l10n.cancel,
             ),
