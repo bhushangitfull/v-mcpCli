@@ -8,14 +8,23 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 
 class VoiceService {
   // ─── Paths ───────────────────────────────────────────────────────────────────
   // Using venv python directly — no PYTHONPATH needed
-  static const String _venvPython =
-      '/media/sakshi/A8C21512C214E67A/whisper-env/bin/python3';
-  static const String _whisperModels =
-      '/media/sakshi/A8C21512C214E67A/whisper-models';
+ static String get _venvPython {
+    final path = dotenv.env['VENV_PATH'] ?? '/media/sakshi/A8C21512C214E67A/whisper-env/bin/python3';
+    debugPrint('[VoiceService] VENV_PATH: $path (from env: ${dotenv.env['VENV_PATH']})');
+    return path;
+  }
+  
+  static String get _whisperModels {
+    final path = dotenv.env['WHISPER_MODEL_PATH'] ?? '/media/sakshi/A8C21512C214E67A/whisper-models';
+    debugPrint('[VoiceService] WHISPER_MODEL_PATH: $path (from env: ${dotenv.env['WHISPER_MODEL_PATH']})');
+    return path;
+  }
 
   // ─── Internal state ──────────────────────────────────────────────────────────
   final AudioRecorder _recorder = AudioRecorder();
