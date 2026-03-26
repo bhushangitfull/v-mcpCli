@@ -96,7 +96,7 @@ class VoiceService {
 
   Future<String?> transcribeLocally(
     String audioFilePath, {
-    String model = 'base',
+    String model = 'small',
     String language = 'en',
   }) async {
     try {
@@ -139,7 +139,7 @@ try:
     result = model.transcribe(
         "$audioFilePath",
         language="$language",
-        fp16=False,
+        fp16=True,
         verbose=False,
     )
     text = result["text"].strip()

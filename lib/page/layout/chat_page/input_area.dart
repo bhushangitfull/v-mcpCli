@@ -227,7 +227,7 @@ class InputAreaState extends State<InputArea>
     try {
       final transcription = await _voiceService.transcribeLocally(
         audioPath,
-        model: 'base',  // change to 'small' for better accuracy
+        model: 'small',  // change to 'small' for better accuracy
         language: 'en', // change to your language if needed e.g. 'hi', 'fr'
       );
 

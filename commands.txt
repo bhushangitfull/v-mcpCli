@@ -2,3 +2,15 @@ sudo apt-get install libgtk-3-dev libx11-dev pkg-config cmake ninja-build clang
 
 echo 'export CMAKE_INSTALL_PREFIX=/tmp/chatmcp' >> ~/.bashrc
 source ~/.bashrc
+
+/whisper-env/bin/python3 -c "import whisper; print('OK')"
+
+/whisper-env/bin/python3 -c "
+import whisper
+whisper.load_model('base', download_root='/media/sakshi/A8C21512C214E67A/whisper-models')
+print('Model ready')
+"
+
+export PIP_CACHE_DIR="/media/sakshi/A8C21512C214E67A/whisper-project/external_cache/pip"
+export WHISPER_MODEL_DIR="/media/sakshi/A8C21512C214E67A/whisper-project/external_cache/models"
+export TORCH_HOME="/media/sakshi/A8C21512C214E67A/whisper-project/external_cache/torch"
