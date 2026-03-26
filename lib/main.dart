@@ -12,6 +12,8 @@ import 'utils/init.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:chatmcp/generated/app_localizations.dart';
 import 'package:bot_toast/bot_toast.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:io' as io;
 
 final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
@@ -20,6 +22,42 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment variables
+  try {
+    // Try loading from multiple possible paths
+    final paths = [
+      '.env.local',
+      '${io.Directory.current.path}/.env.local',
+    ];
+    
+    bool loaded = false;
+    for (final path in paths) {
+      try {
+        final envFile = io.File(path);
+        if (await envFile.exists()) {
+          debugPrint('✓ Loading .env.local from: $path');
+          await dotenv.load(fileName: path);
+          final venvPath = dotenv.env['VENV_PATH'];
+          final whisperPath = dotenv.env['WHISPER_MODEL_PATH'];
+          debugPrint('✓ VENV_PATH: $venvPath');
+          debugPrint('✓ WHISPER_MODEL_PATH: $whisperPath');
+          loaded = true;
+          break;
+        }
+      } catch (e) {
+        debugPrint('✗ Failed to load from $path: $e');
+      }
+    }
+    
+    if (!loaded) {
+      debugPrint('⚠ Warning: .env.local not found in expected locations');
+      debugPrint('Current directory: ${io.Directory.current.path}');
+    }
+  } catch (e) {
+    Logger.root.warning('Failed to load .env.local: $e');
+    debugPrint('Env loading error: $e');
+  }
 
   initializeLogger();
 
