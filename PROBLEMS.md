@@ -1,0 +1,1 @@
+If you shit to windows, the venv in secondary drive will be erased along with pip cache and temporary files
