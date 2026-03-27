@@ -11,6 +11,15 @@ whisper.load_model('base', download_root='/media/sakshi/A8C21512C214E67A/whisper
 print('Model ready')
 "
 
+python3 -m venv whisper-env
+source whisper-env/bin/activate
 export PIP_CACHE_DIR="/media/sakshi/A8C21512C214E67A/whisper-project/external_cache/pip"
 export WHISPER_MODEL_DIR="/media/sakshi/A8C21512C214E67A/whisper-project/external_cache/models"
 export TORCH_HOME="/media/sakshi/A8C21512C214E67A/whisper-project/external_cache/torch"
+pip install git+https://github.com/openai/whisper.git
+
+TMPDIR=/mnt/A8C21512C214E67A/tmp \
+PIP_CACHE_DIR=/mnt/A8C21512C214E67A/pip-cache \
+pip install openai-whisper
+
+
