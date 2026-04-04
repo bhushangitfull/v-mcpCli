@@ -23,3 +23,4 @@ PIP_CACHE_DIR=/mnt/A8C21512C214E67A/pip-cache \
 pip install openai-whisper
 
 
+6a73cffa-cfda-431e-b561-e775b35fd657
