@@ -14,13 +14,13 @@ class VoiceService {
   // ─── Paths ───────────────────────────────────────────────────────────────────
   // Using venv python directly — no PYTHONPATH needed
   static String get _venvPython {
-    final path = dotenv.env['VENV_PATH'] ?? '/media/sakshi/A8C21512C214E67A/whisper-env/bin/python3';
+    final path = '/home/sakshi/whisper-env/bin/python3';
     debugPrint('[VoiceService] VENV_PATH: $path (from env: ${dotenv.env['VENV_PATH']})');
     return path;
   }
   
   static String get _whisperModels {
-    final path = dotenv.env['WHISPER_MODEL_PATH'] ?? '/media/sakshi/A8C21512C214E67A/whisper-models';
+    final path = '/home/sakshi/whisper-models/';
     debugPrint('[VoiceService] WHISPER_MODEL_PATH: $path (from env: ${dotenv.env['WHISPER_MODEL_PATH']})');
     return path;
   }

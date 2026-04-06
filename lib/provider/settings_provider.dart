@@ -324,7 +324,7 @@ class SettingsProvider extends ChangeNotifier {
   Future<List<llm_model.Model>> getAvailableModels() async {
     final models = <llm_model.Model>[];
     for (var setting in _apiSettings) {
-      // 只有启用的提供商才加入模型列表（null 表示启用，只有 false 为禁用）
+      
       final isEnabled = setting.enable ?? true;
       if (!isEnabled) continue;
 

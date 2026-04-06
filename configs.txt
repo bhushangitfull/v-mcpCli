@@ -24,3 +24,10 @@ pip install openai-whisper
 
 
 6a73cffa-cfda-431e-b561-e775b35fd657
+
+bluetooth configuration:
+Pulse Audio: Head Set Head unit HSP/HFP
+
+FSmcp config:
+        command: npx
+        argument: -y @modelcontextprotocol/server-filesystem /home/
