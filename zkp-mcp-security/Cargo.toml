@@ -1,0 +1,8 @@
+[package]
+name = "zkp-mcp-security"
+version = "0.1.0"
+authors = ["bhushangitfull"]
+edition = "2021"
+
+[dependencies]
+# Add your dependencies here
