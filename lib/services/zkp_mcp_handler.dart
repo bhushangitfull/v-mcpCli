@@ -1,15 +1,13 @@
 // lib/services/zkp_mcp_handler.dart
-import 'package:eventflux/eventflux.dart';
 import 'zkp_security_client.dart';
-import 'mcp_client.dart';
+import 'package:chatmcp/mcp/client/mcp_client_interface.dart';
+import 'package:chatmcp/mcp/models/json_rpc_message.dart';
 
 class ZKPMCPHandler {
-  final EventFlux mcpConnection;
   final ZKPSecurityClient zkpClient;
-  final MCPClient mcpClient;
+  final McpClient mcpClient;
 
   ZKPMCPHandler({
-    required this.mcpConnection,
     required this.zkpClient,
     required this.mcpClient,
   });
@@ -19,7 +17,7 @@ class ZKPMCPHandler {
   /// ============================================
   Future<MCPFileOperationResult> processFileOperationWithZKP({
     required String filePath,
-    required String operation, // "read_file", "read_text_file", "search", etc.
+    required String operation, // "read_file", "read_text_file", "search_replace", etc.
     required String userId,
     Map<String, dynamic>? operationParams,
   }) async {
@@ -36,42 +34,77 @@ class ZKPMCPHandler {
       }
 
       // Step 2: Perform MCP file operation
-      final fileContent = await _performMCPOperation(
+      final operationResult = await _performMCPOperation(
         filePath: filePath,
         operation: operation,
         params: operationParams,
       );
 
-      if (fileContent == null) {
+      // Determine if this is a read or write operation
+      final isReadOperation = ['read_file', 'read_multiple_files', 'list_dir', 'grep_search'].contains(operation);
+      final isWriteOperation = ['search_replace', 'run_terminal_cmd'].contains(operation);
+
+      if (isReadOperation) {
+        // For read operations, verify file integrity
+        if (operationResult == null) {
+          return MCPFileOperationResult(
+            success: false,
+            error: 'Failed to read file',
+          );
+        }
+
+        final fileContent = operationResult as String;
+
+        // Step 3: Verify file integrity (Merkle proof)
+        final integrityProof = await _proveFileIntegrity(
+          fileContent: fileContent,
+          filePath: filePath,
+        );
+
+        // Step 4: Create audit entry
+        final auditEntry = await _createAuditEntry(
+          userId: userId,
+          filePath: filePath,
+          operation: operation,
+          dataSize: fileContent.length,
+          fileHash: integrityProof['file_hash'],
+        );
+
+        // Step 5: Return verified content with proofs
         return MCPFileOperationResult(
-          success: false,
-          error: 'Failed to read file',
+          success: true,
+          content: fileContent,
+          accessProof: accessProof,
+          integrityProof: integrityProof,
+          auditEntry: auditEntry,
+        );
+      } else if (isWriteOperation) {
+        // For write operations, just create audit entry
+        final auditEntry = await _createAuditEntry(
+          userId: userId,
+          filePath: filePath,
+          operation: operation,
+          dataSize: 0, // For write operations, we don't know the exact size
+          fileHash: null, // No file hash for write operations
+        );
+
+        return MCPFileOperationResult(
+          success: operationResult != null,
+          content: operationResult?.toString(),
+          accessProof: accessProof,
+          integrityProof: null, // No integrity proof for write operations
+          auditEntry: auditEntry,
+        );
+      } else {
+        // For other operations, return basic result
+        return MCPFileOperationResult(
+          success: operationResult != null,
+          content: operationResult?.toString(),
+          accessProof: accessProof,
+          integrityProof: null,
+          auditEntry: null,
         );
       }
-
-      // Step 3: Verify file integrity (Merkle proof)
-      final integrityProof = await _proveFileIntegrity(
-        fileContent: fileContent,
-        filePath: filePath,
-      );
-
-      // Step 4: Create audit entry
-      final auditEntry = await _createAuditEntry(
-        userId: userId,
-        filePath: filePath,
-        operation: operation,
-        dataSize: fileContent.length,
-        fileHash: integrityProof['file_hash'],
-      );
-
-      // Step 5: Return verified content with proofs
-      return MCPFileOperationResult(
-        success: true,
-        content: fileContent,
-        accessProof: accessProof,
-        integrityProof: integrityProof,
-        auditEntry: auditEntry,
-      );
     } catch (e) {
       print('❌ Error: $e');
       return MCPFileOperationResult(
@@ -134,12 +167,12 @@ class ZKPMCPHandler {
   /// ============================================
   /// Step 2: Perform MCP file operation
   /// ============================================
-  Future<String?> _performMCPOperation({
+  Future<dynamic> _performMCPOperation({
     required String filePath,
     required String operation,
     Map<String, dynamic>? params,
   }) async {
-    print('Step 2: 📂 Reading from MCP server: $operation');
+    print('Step 2: 📂 Performing MCP operation: $operation');
 
     try {
       // Different operations
@@ -150,12 +183,21 @@ class ZKPMCPHandler {
         case 'read_text_file':
           return await _readTextFile(filePath);
 
-        case 'search_in_file':
-          final searchTerm = params?['searchTerm'] as String?;
-          return await _searchInFile(filePath, searchTerm ?? '');
+        case 'search_replace':
+          final oldString = params?['old_string'] as String?;
+          final newString = params?['new_string'] as String?;
+          return await _searchReplace(filePath, oldString ?? '', newString ?? '');
 
-        case 'get_file_info':
-          return await _getFileInfo(filePath);
+        case 'run_terminal_cmd':
+          final command = params?['command'] as String?;
+          return await _runTerminalCommand(command ?? '');
+
+        case 'list_dir':
+          return await _listDirectory(filePath);
+
+        case 'grep_search':
+          final query = params?['query'] as String?;
+          return await _grepSearch(filePath, query ?? '');
 
         default:
           throw Exception('Unknown operation: $operation');
@@ -170,13 +212,16 @@ class ZKPMCPHandler {
     print('   Reading file: $filePath');
 
     try {
-      final response = await mcpConnection.send({
-        'method': 'resources/read',
-        'params': {'uri': 'file://$filePath'},
-      });
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'resources/read',
+        params: {'uri': 'file://$filePath'},
+      );
 
-      if (response != null && response['contents'] != null) {
-        final content = response['contents'][0]['text'];
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null && response.result!['contents'] != null) {
+        final content = response.result!['contents'][0]['text'];
         print('   ✅ File read: ${content.length} bytes');
         return content;
       }
@@ -192,13 +237,16 @@ class ZKPMCPHandler {
     print('   Reading text file: $filePath');
 
     try {
-      final response = await mcpConnection.send({
-        'method': 'resources/read',
-        'params': {'uri': 'file://$filePath'},
-      });
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'resources/read',
+        params: {'uri': 'file://$filePath'},
+      );
 
-      if (response != null && response['contents'] != null) {
-        final content = response['contents'][0]['text'];
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null && response.result!['contents'] != null) {
+        final content = response.result!['contents'][0]['text'];
         print('   ✅ Text file read: ${content.length} characters');
         return content;
       }
@@ -236,13 +284,16 @@ class ZKPMCPHandler {
     print('   Getting file info: $filePath');
 
     try {
-      final response = await mcpConnection.send({
-        'method': 'resources/info',
-        'params': {'uri': 'file://$filePath'},
-      });
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'resources/info',
+        params: {'uri': 'file://$filePath'},
+      );
 
-      if (response != null) {
-        return response.toString();
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null) {
+        return response.result.toString();
       }
 
       return '';
@@ -306,15 +357,16 @@ class ZKPMCPHandler {
     required String filePath,
     required String operation,
     required int dataSize,
-    required String fileHash,
+    String? fileHash,
   }) async {
     print('Step 4: 📋 Creating audit entry');
 
+    final hashLabel = fileHash ?? 'N/A';
     try {
       final auditResult = await zkpClient.createAuditEntry(
         userId: userId,
         filePath: filePath,
-        dataSentToLLM: 'Operation: $operation | Size: $dataSize bytes | Hash: $fileHash',
+        dataSentToLLM: 'Operation: $operation | Size: $dataSize bytes | Hash: $hashLabel',
         operation: operation,
       );
 
@@ -340,6 +392,133 @@ class ZKPMCPHandler {
         'success': false,
         'error': e.toString(),
       };
+    }
+  }
+
+  /// ============================================
+  /// Write Operations
+  /// ============================================
+
+  Future<bool> _searchReplace(String filePath, String oldString, String newString) async {
+    print('   Performing search_replace on: $filePath');
+
+    try {
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'tools/call',
+        params: {
+          'name': 'search_replace',
+          'arguments': {
+            'file_path': filePath,
+            'old_string': oldString,
+            'new_string': newString,
+          }
+        },
+      );
+
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null) {
+        print('   ✅ Search replace completed');
+        return true;
+      }
+
+      print('   ❌ Search replace failed');
+      return false;
+    } catch (e) {
+      print('   ❌ Error in search replace: $e');
+      rethrow;
+    }
+  }
+
+  Future<String> _runTerminalCommand(String command) async {
+    print('   Running terminal command: $command');
+
+    try {
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'tools/call',
+        params: {
+          'name': 'run_terminal_cmd',
+          'arguments': {
+            'command': command,
+          }
+        },
+      );
+
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null && response.result!['content'] != null) {
+        final output = response.result!['content'][0]['text'];
+        print('   ✅ Command executed');
+        return output;
+      }
+
+      return 'Command executed (no output)';
+    } catch (e) {
+      print('   ❌ Error running command: $e');
+      rethrow;
+    }
+  }
+
+  Future<String> _listDirectory(String dirPath) async {
+    print('   Listing directory: $dirPath');
+
+    try {
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'tools/call',
+        params: {
+          'name': 'list_dir',
+          'arguments': {
+            'path': dirPath,
+          }
+        },
+      );
+
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null && response.result!['content'] != null) {
+        final content = response.result!['content'][0]['text'];
+        print('   ✅ Directory listed');
+        return content;
+      }
+
+      return '';
+    } catch (e) {
+      print('   ❌ Error listing directory: $e');
+      rethrow;
+    }
+  }
+
+  Future<String> _grepSearch(String path, String query) async {
+    print('   Performing grep search: $query in $path');
+
+    try {
+      final message = JSONRPCMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        method: 'tools/call',
+        params: {
+          'name': 'grep_search',
+          'arguments': {
+            'query': query,
+            'include_pattern': path,
+          }
+        },
+      );
+
+      final response = await mcpClient.sendMessage(message);
+
+      if (response.result != null && response.result!['content'] != null) {
+        final content = response.result!['content'][0]['text'];
+        print('   ✅ Grep search completed');
+        return content;
+      }
+
+      return '';
+    } catch (e) {
+      print('   ❌ Error in grep search: $e');
+      rethrow;
     }
   }
 

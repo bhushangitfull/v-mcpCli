@@ -8,7 +8,7 @@ class ZKPSecurityClient {
   final String zkpServerUrl;
   bool _serverAvailable = false;
 
-  ZKPSecurityClient({this.zkpServerUrl = 'http://localhost:8777'});
+  ZKPSecurityClient({this.zkpServerUrl = 'http://localhost:8778'});
 
   // ===== FILE ACCESS CONTROL =====
   /// Generate proof of file access WITHOUT revealing your credential

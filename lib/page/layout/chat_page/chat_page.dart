@@ -24,6 +24,7 @@ import 'package:chatmcp/mcp/models/json_rpc_message.dart';
 import 'dart:async';
 import 'package:chatmcp/services/zkp_security_client.dart';
 import 'package:chatmcp/services/zkp_mcp_handler.dart';
+import 'package:chatmcp/utils/zkp_chat_message_helper.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -42,6 +43,8 @@ class _ChatPageState extends State<ChatPage> {
   String _parentMessageId = ''; // Parent message ID
   bool _isCancelled = false; // Indicates if the current operation has been cancelled by the user
   bool _isWaiting = false; // Indicates if the system is waiting for a response from the LLM
+  ZKPMCPHandler? _zkpMCPHandler;
+  bool _zkpServerAvailable = false;
 
   // GlobalKey for InputArea to access focus methods
   final GlobalKey<InputAreaState> _inputAreaKey = GlobalKey<InputAreaState>();
@@ -94,6 +97,7 @@ class _ChatPageState extends State<ChatPage> {
     _addListeners();
     _initializeHistoryMessages();
     on<RunFunctionEvent>(_onRunFunction);
+    _initializeZKPHandler();
   }
 
   Future<void> _onRunFunction(RunFunctionEvent event) async {
@@ -105,6 +109,24 @@ class _ChatPageState extends State<ChatPage> {
       _handleSubmitted(SubmitData("", []));
     }
   }
+  Future<void> _initializeZKPHandler() async {
+  try {
+    final zkpClient = ZKPSecurityClient();
+    final available = await zkpClient.checkHealth();
+    
+    setState(() {
+      _zkpServerAvailable = available;
+      if (available) {
+        _zkpMCPHandler = ZKPMCPHandler(
+          zkpClient: zkpClient,
+          mcpClient: ProviderManager.mcpServerProvider.clients.values.first,
+        );
+      }
+    });
+  } catch (e) {
+    Logger.root.warning('Failed to initialize ZKP handler: $e');
+  }
+}
 
   Future<bool> _showFunctionApprovalDialog(RunFunctionEvent event) async {
     // Determines which MCP server's tool the function belongs to
@@ -428,6 +450,16 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
+    // Check if this is a file operation that should use ZKP
+    final fileOperations = ['read_file', 'read_multiple_files', 'list_dir', 'grep_search', 'run_terminal_cmd', 'search_replace'];
+    final isFileOperation = fileOperations.contains(toolName);
+
+    if (isFileOperation && _zkpMCPHandler != null && _zkpServerAvailable) {
+      await _sendToolCallWithZKP(toolName, toolArguments);
+      return;
+    }
+
+    // Original logic for non-file operations or when ZKP is not available
     // Configures tool call with timeout and retry mechanism
     const int maxRetries = 3;
     const Duration timeout = Duration(seconds: 60 * 5);
@@ -495,6 +527,82 @@ class _ChatPageState extends State<ChatPage> {
         _parentMessageId = msgId;
       }
     });
+  }
+
+  Future<void> _sendToolCallWithZKP(String toolName, Map<String, dynamic> toolArguments) async {
+    if (_zkpMCPHandler == null) {
+      Logger.root.warning('ZKP handler not available for tool: $toolName');
+      return;
+    }
+
+    try {
+      Logger.root.info('Processing ZKP tool call: $toolName with args: $toolArguments');
+
+      // Extract file path from arguments
+      String? filePath;
+      if (toolArguments.containsKey('path')) {
+        filePath = toolArguments['path'] as String?;
+      } else if (toolArguments.containsKey('relative_path')) {
+        filePath = toolArguments['relative_path'] as String?;
+      } else if (toolArguments.containsKey('file_path')) {
+        filePath = toolArguments['file_path'] as String?;
+      }
+
+      if (filePath == null) {
+        Logger.root.warning('No file path found in tool arguments for ZKP: $toolArguments');
+        // Fall back to regular tool call
+        await _sendToolCallAndProcessResponse(toolName, toolArguments);
+        return;
+      }
+
+      // Process with ZKP
+      final result = await _zkpMCPHandler!.processFileOperationWithZKP(
+        filePath: filePath,
+        operation: toolName,
+        userId: 'user', // TODO: Get actual user ID
+        operationParams: toolArguments,
+      );
+
+      // Add the tool result message
+      setState(() {
+        _parentMessageId = _messages.last.messageId;
+        final msgId = Uuid().v4();
+        String content;
+        if (result.success && result.content != null) {
+          content = '<call_function_result name="$toolName">\n${result.content}\n</call_function_result>';
+        } else {
+          content = '<call_function_result name="$toolName">\nFailed: ${result.error ?? "Unknown error"}\n</call_function_result>';
+        }
+        _messages.add(
+          ChatMessage(
+            messageId: msgId,
+            content: content,
+            role: MessageRole.assistant,
+            name: toolName,
+            parentMessageId: _parentMessageId,
+          ),
+        );
+        _parentMessageId = msgId;
+      });
+
+      // Add ZKP proof message
+      final proofMessage = ZKPChatMessageHelper.createProofVerificationMessage(
+        result: result,
+        filePath: filePath,
+        operation: toolName,
+        parentMessageId: _parentMessageId,
+      );
+
+      setState(() {
+        _messages.add(proofMessage);
+        _parentMessageId = proofMessage.messageId;
+      });
+
+    } catch (e) {
+      Logger.root.severe('ZKP tool call failed: $e');
+      // Fall back to regular tool call
+      await _sendToolCallAndProcessResponse(toolName, toolArguments);
+    }
   }
 
   ChatMessage? _findUserMessage(ChatMessage message) {
