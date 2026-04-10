@@ -22,6 +22,8 @@ import 'package:chatmcp/generated/app_localizations.dart';
 import 'dart:convert';
 import 'package:chatmcp/mcp/models/json_rpc_message.dart';
 import 'dart:async';
+import 'package:chatmcp/services/zkp_security_client.dart';
+import 'package:chatmcp/services/zkp_mcp_handler.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});

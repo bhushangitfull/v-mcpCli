@@ -13,9 +13,9 @@ class VoiceService {
   // ─── Paths ───────────────────────────────────────────────────────────────────
   // Using venv python directly — no PYTHONPATH needed
   static const String _venvPython =
-      '/media/sakshi/A8C21512C214E67A/whisper-env/bin/python3';
+      'home/shravani/whisper-env/bin/python3';
   static const String _whisperModels =
-      '/media/sakshi/A8C21512C214E67A/whisper-models';
+      'home/shravani/whisper-models';
 
   // ─── Internal state ──────────────────────────────────────────────────────────
   final AudioRecorder _recorder = AudioRecorder();
